@@ -107,9 +107,8 @@ export class DatabaseClient<
 				)
 			: undefined;
 		if (filters) {
-			queryCall["sorts"] = query.sort ?? [];
-			// @ts-expect-error errors vs notion api types
-			queryCall["filter"] = filters;
+			queryCall.sorts = query.sort ?? [];
+			queryCall.filter = filters;
 		}
 
 		const response = await this.client.dataSources.query(queryCall);

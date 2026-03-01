@@ -35,7 +35,6 @@ async function runGenerate(): Promise<void> {
 
 		console.log("\n📊 Generating database types...");
 		const { databaseNames } = await createDatabaseTypes({ type: "all" });
-
 		if (databaseNames.length === 0) {
 			console.log("⚠️  Generated no database types");
 		} else {

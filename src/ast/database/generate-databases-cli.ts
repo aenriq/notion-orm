@@ -10,7 +10,6 @@ import * as ts from "typescript";
 import { getNotionConfig } from "../../config/loadConfig";
 import {
 	AGENTS_DIR,
-	AST_FS_FILENAMES,
 	AST_FS_PATHS,
 	AST_IMPORT_PATHS,
 	AST_RUNTIME_CONSTANTS,
@@ -30,7 +29,7 @@ export function readDatabaseMetadata(): CachedDatabaseMetadata[] {
 		}
 		const content = fs.readFileSync(metadataFile, "utf-8");
 		return JSON.parse(content) as CachedDatabaseMetadata[];
-	} catch (error) {
+	} catch {
 		return [];
 	}
 }
@@ -58,7 +57,6 @@ export const createDatabaseTypes = async (
 	options: CreateDatabaseTypesOptions,
 ): Promise<{ databaseNames: string[] }> => {
 	const config = await getNotionConfig();
-
 	if (!config.auth) {
 		console.error(
 			"⚠️ Integration key not found. Inside 'notion.config.js/ts' file, please pass a valid Notion Integration Key",
@@ -92,7 +90,7 @@ export const createDatabaseTypes = async (
 					if (fs.statSync(filePath).isFile()) {
 						fs.unlinkSync(filePath);
 					}
-				} catch (e) {
+				} catch {
 					// Ignore errors
 				}
 			}
@@ -161,7 +159,7 @@ function createDatabaseBarrelFile(args: {
 		),
 	);
 
-	const registryProperties = databaseInfo.map(({ className, displayName }) =>
+	const registryProperties = databaseInfo.map(({ className }) =>
 		ts.factory.createPropertyAssignment(
 			ts.factory.createIdentifier(className),
 			ts.factory.createIdentifier(className),
@@ -231,7 +229,7 @@ export function readAgentMetadataFromDisk(): CachedAgentMetadata[] {
 		}
 		const content = fs.readFileSync(metadataFile, "utf-8");
 		return JSON.parse(content) as CachedAgentMetadata[];
-	} catch (error) {
+	} catch {
 		return [];
 	}
 }

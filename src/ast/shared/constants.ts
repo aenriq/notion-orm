@@ -19,7 +19,7 @@ try {
 		const __filename = fileURLToPath(import.meta.url);
 		__dirname = path.dirname(__filename);
 	}
-} catch (e) {
+} catch {
 	// In environments like Cloudflare Workers, import.meta.url may not work
 	// This is fine - we only need file system paths at build-time, not runtime
 }
