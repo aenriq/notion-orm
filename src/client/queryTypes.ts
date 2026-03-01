@@ -52,6 +52,43 @@ export type SupportedNotionColumnType = {
     : never;
 }[keyof typeof SUPPORTED_PROPERTY_TYPES];
 
+export const FILTERABLE_PROPERTY_TYPES = {
+	formula: false,
+	files: false,
+	people: false,
+	relation: false,
+	created_by: false,
+	last_edited_by: false,
+	created_time: false,
+	last_edited_time: false,
+
+	// Supported + filterable
+	url: true,
+	phone_number: true,
+	title: true,
+	email: true,
+	checkbox: true,
+	date: true,
+	multi_select: true,
+	status: true,
+	number: true,
+	rich_text: true,
+	select: true,
+	unique_id: false,
+} as const satisfies Record<SupportedNotionColumnType, boolean>;
+
+export type FilterableNotionColumnType = {
+	[K in keyof typeof FILTERABLE_PROPERTY_TYPES]: (typeof FILTERABLE_PROPERTY_TYPES)[K] extends true
+		? K
+		: never;
+}[keyof typeof FILTERABLE_PROPERTY_TYPES];
+
+export function isFilterablePropertyType(
+	propertyType: SupportedNotionColumnType,
+): propertyType is FilterableNotionColumnType {
+	return FILTERABLE_PROPERTY_TYPES[propertyType];
+}
+
 type TextPropertyFilters = {
   equals: string;
   does_not_equal: string;
