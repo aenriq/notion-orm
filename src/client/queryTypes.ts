@@ -13,16 +13,16 @@ export type DatabasePropertyType =
   NotionPropertyTypeToConfigMap[keyof NotionPropertyTypeToConfigMap]["type"];
 
 export const SUPPORTED_PROPERTY_TYPES = {
-  // These are currently not supported by our package
-  formula: false,
-  files: false,
-  people: false,
-  relation: false,
+  // Rollup is still unsupported.
+  formula: true,
+  files: true,
+  people: true,
+  relation: true,
   rollup: false,
-  created_by: false,
-  last_edited_by: false,
-  created_time: false,
-  last_edited_time: false,
+  created_by: true,
+  last_edited_by: true,
+  created_time: true,
+  last_edited_time: true,
 
   // Working property types
   url: true,
