@@ -21,6 +21,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.3.4",
     "@types/node": "^22.0.0",
+    "biome-plugin-no-type-assertion": "^1.0.2",
     "typescript": "^5.6.3"
   },
   "dependencies": {
