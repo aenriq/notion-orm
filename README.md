@@ -1,42 +1,104 @@
 # Notion ORM
 
-⚠️ This package is Still in development 🏗️
+A lightweight TypeScript [Notion API](https://developers.notion.com/) wrapper that aims to improve interactions with databases and custom agents, by leveraging static schema types
 
-A library to simplify adding and querying [Notion](https://notion.so/product) databases/tables. Giving typeahead/intellisense support on columns and expected column values on user specified databases. Built on top of [Notion API](https://developers.notion.com/)
+## Key Features
+- Sync remote schema changes in single command
+- Easily interact with your custom agents (ex. chat, streaming)
+- Intellisense when adding and querying
+- Exposed database metadata (ex. types, zod validators)
 
-Databases with the following column types are supported:
+## Basic examples
+### Add page to database
 
-- Multi-select
-- Select
-- Status
-- Date
-- Text
-- Url
-- Checkbox
-- Email
-- Phone Number
+```ts
+await notion.databases.books.add({
+  icon: {
+    type: "emoji",
+    emoji: "📕",
+  },
+  // Expected `properties` object's keys and values are typed to `book` database schema
+  properties: {
+    bookName: "Creativity, Inc.",
+    genre: ["Non-fiction"],
+    publishDate: {
+      start: "2026-03-01",
+    },
+  },
+});
 
-## Installation
-
-The only requirement is a Notion Developer API key ([here](https://developers.notion.com/)) and database IDs you want. Be sure to connect your [integration](https://developers.notion.com/docs/working-with-databases#adding-pages-to-a-database) (🚧 *Permissions* section) with your tables
-
-```bash
-npm install @haustle/notion-orm --save-dev
 ```
 
-At the root of your project run the CLI to scaffold a config file (defaults to JavaScript unless a `tsconfig.json` is present):
+### Query/filter database
+
+```ts
+const response = await notion.databases.books.query({
+  // Expected `filter` object is typed to the `book` database schema
+  filter: {
+    and: [
+      { genre: { contains: "Non-fiction" } },
+      { publishDate: { on_or_after: "2026-01-01" } },
+      {
+        or: [
+          { bookName: { contains: "Creativity" } },
+          { bookName: { contains: "Innovation" } },
+        ],
+      },
+    ],
+  },
+});
+
+```
+
+### Chat with agent
+```ts
+const chat = await notion.agents.helpBot.chat({message: "Is the company closed today"})
+await notion.agents.helpBot.pollThread(chat.threadId)
+const messages = await notion.agents.helpBot.getMessages(chat.threadId, {
+  role: "agent",
+});
+```
+
+
+### Chat with agent (stream)
+
+```ts
+const thread = await notion.agents.helpBot.chatStream({
+  message: "How can I update my shipping address?",
+  onMessage: ({content, role}) => (msg.content),
+});
+
+```
+
+
+# Installation
+
+You need a Notion integration key. Add shared data source IDs only if you want generated database clients.
 
 ```bash
-npx notion init
-# or
+bun add @haustle/notion-orm
+```
+
+## Quickstart
+
+Initialize config from your project root (recommended):
+
+```bash
 bun notion init
 ```
 
-You can force a specific format with `--js` or `--ts`. You’ll need to pass your developer key and database IDs. How to get database IDs [here](https://developers.notion.com/docs/working-with-databases#adding-pages-to-a-database)
+If needed, you can force config format:
 
-```tsx
-// notion.config.ts (generated with `notion init --ts`)
+```bash
+bun notion init --ts
+# or
+bun notion init --js
+```
 
+Generated config shape:
+
+```ts
+// notion.config.ts
 // Be sure to create a .env.local file and add your NOTION_KEY
 
 // If you don't have an API key, sign up for free
@@ -45,101 +107,150 @@ You can force a specific format with `--js` or `--ts`. You’ll need to pass you
 const auth = process.env.NOTION_KEY || "your-notion-api-key-here";
 const NotionConfig = {
   auth,
-  databaseIds: [
-    // Add undashed database source IDs here (ex. "2a3c495da03c80bc99fe000bbf2be4bb")
-    // or use the following command to automatically update
-    // `notion add <database-source-id or URL>`
-    // If you decide to manually add database IDs, be sure to run
-    // `notion generate` to properly update the local database types
+  databases: [
+    // Use: notion add <database-id>
+  ],
+  agents: [
+    // Auto-populated by: notion sync
   ],
 };
 
 export default NotionConfig;
 ```
 
-Execute the following command from the root project directory.
+### Adding databases
+
+To add a new database fetch the datasource ID and run the following
 
 ```bash
-npx notion generate
+bun notion add <database-id>
 ```
 
-**Package Size**
-Unpackaged size is 70.6KB and the installation size is 5.12MB (5.03MB from `@notionhq/client` dependency)
+Automatically builds related types and updates config (a following `sync` is not required).
 
-## Implementation
+### Adding agents
+`agents` linked to the integration are automatically populated when running `bun notion sync` (no manual edits needed). If you only care about agents, you're done setting up!
 
-Databases can be imported via barrel file or from the individual database file. All database names will be camelCase 🐫.
 
-```tsx
-// Barrel Import (access to all databases)
-import * as notion from "@haustle/notion-orm";
-notion.databaseName.add();
-notion.databaseName2.query();
+### Full sync command (`notion sync`)
+
+Use `bun notion sync` as the full sync command when you want to refresh everything from your integration in one run (database schemas + custom agents).
+
+```bash
+bun notion sync
 ```
 
-```jsx
-// Individual Database Import
-import {
-  databaseName,
-  DatabaseSchemaType,
-  QuerySchemaType,
-} from "@haustle/notion-orm/build/db/databaseName";
+`notion sync` creates and refreshes:
 
-databaseName.add();
+- `build/db/*` generated database clients/types
+- `build/agents/*` generated agent clients/types
+- `build/src/index.*` generated package entry that wires both groups into `NotionORM`
+
+# Implementation
+
+Generated database and agent names are camelCased and exposed on an instance of `NotionORM`.
+
+```ts
+import NotionORM from "@haustle/notion-orm";
+
+const notion = new NotionORM({
+  auth: process.env.NOTION_KEY!,
+});
+
+await notion.databases.menuRecipes.query({});
+await notion.agents.yourAgentName.listThreads();
 ```
 
-- `DatabaseSchemaType`: Object type accepted in the database’s `add()` function
-- `QuerySchemaType`: Object type accepted in the database’s `query()` function
+## Public client
 
-The following examples for querying & adding are for server-side calls. If you’re looking to use this framework to execute client-side calls (ex. button click add/query X) visit the [Client (React)](https://www.notion.so/Notion-ORM-README-fdd30271bf944a3e85cb999ec8d5447d) section after reading
+### Runtime shape
 
-**Adding**
+```ts
+const db = notion.databases.books; // DatabaseClient
+const agent = notion.agents.yourAgentName; // AgentClient
+```
 
-Only required column required is the title.
+### Runtime access
 
-```jsx
-notion.books.add({
-  bookName: "Raphael, Painter in Rome: a Novel", // title
-  author: "Stephanie Storey", // text
-  status: "In progress", // status
-  numberOfPages: 307, // number
-  genre: ["Historical Fiction"], // multi-select
-  rating: "⭐️⭐️⭐️⭐️", // select
-  startDate: {
-    // date
-    start: "2023-01-01",
+
+| runtime property   | type                             | description                                                    | go deeper                                                            |
+| ------------------ | -------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `notion.databases` | `Record<string, DatabaseClient>` | Generated database client map keyed by camelCase database name | [Adding](#adding), [Querying](#querying)                             |
+| `notion.agents`    | `Record<string, AgentClient>`    | Generated agent client map keyed by camelCase agent name       | [Agents](#agents), [Agent method reference](#agent-method-reference) |
+
+
+### Database client (public methods)
+
+
+| member                       | kind     | description                                                   | go deeper                                                                              |
+| ---------------------------- | -------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `id`                         | property | Notion data source ID used by this client instance            | -                                                                                      |
+| `name`                       | property | Human-readable database name captured during generation       | -                                                                                      |
+| `add({ properties, icon? })` | method   | Creates a page in the database using typed `properties`       | [Adding](#adding)                                                                      |
+| `query({ filter?, sort? })`  | method   | Queries database pages and returns `{ results, rawResponse }` | [Querying](#querying), [Supported database properties](#supported-database-properties) |
+
+
+### Agent client (public methods)
+
+
+| member                                           | kind     | description                                           | go deeper                                                            |
+| ------------------------------------------------ | -------- | ----------------------------------------------------- | -------------------------------------------------------------------- |
+| `id`                                             | property | Notion agent ID used by this client instance          | -                                                                    |
+| `name`                                           | property | Human-readable agent name                             | -                                                                    |
+| `icon`                                           | property | Normalized agent icon metadata (or `null`)            | -                                                                    |
+| `listThreads()`                                  | method   | Lists recent threads with `id`, `title`, and `status` | [Agent method reference](#agent-method-reference)                    |
+| `getThreadInfo(threadId)`                        | method   | Fetches a single thread record                        | [Agent method reference](#agent-method-reference)                    |
+| `getThreadTitle(threadId)`                       | method   | Convenience helper to fetch just the thread title     | [Agent method reference](#agent-method-reference)                    |
+| `chat({ message, threadId? })`                   | method   | Sends a message and creates/resumes a thread          | [Agents](#agents), [Agent method reference](#agent-method-reference) |
+| `chatStream({ message, threadId?, onMessage? })` | method   | Streams messages and returns final `ThreadInfo`       | [Agents](#agents), [Agent method reference](#agent-method-reference) |
+| `getMessages(threadId, { role? })`               | method   | Gets full (or role-filtered) message history          | [Agent method reference](#agent-method-reference)                    |
+| `pollThread(threadId, options?)`                 | method   | Polls until thread processing completes               | [Agent method reference](#agent-method-reference)                    |
+
+
+### Generated exports
+
+
+| import path                                    | what you get                                                                                                                                                                 | when to use                                                  |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `@haustle/notion-orm/build/db/<databaseName>`  | `<databaseName>(auth)` factory, `DatabaseSchemaType`, `QuerySchemaType`, generated Zod schema, generated option tuples (for select/status/multi-select), schema/type aliases | Script-level direct DB usage without the `NotionORM` wrapper |
+| `@haustle/notion-orm/build/agents/<agentName>` | `<agentName>(auth)` factory that returns an `AgentClient`                                                                                                                    | Script-level direct agent usage                              |
+| `@haustle/notion-orm/build/db`                 | `databases` barrel object (all database factories)                                                                                                                           | Dynamic database selection or custom registry wiring         |
+| `@haustle/notion-orm/build/agents`             | `agents` barrel object (all agent factories)                                                                                                                                 | Dynamic agent selection or custom registry wiring            |
+
+
+If you need the final plain-text agent response from stream output, import `AgentClient` from `@haustle/notion-orm` and use `AgentClient.getAgentResponse(threadInfo)`.
+
+# Available database operations
+
+## Adding
+
+Only title is required by Notion for a minimal page.
+
+```ts
+await notion.databases.books.add({
+  properties: {
+    bookName: "Raphael, Painter in Rome: a Novel", // title
+    author: "Stephanie Storey", // rich_text
+    status: "In progress", // status
+    numberOfPages: 307, // number
+    genre: ["Historical Fiction"], // multi_select
+    startDate: {
+      start: "2023-01-01",
+    }, // date
+    phone: "0000000000", // phone_number
+    email: "tyrus@haustle.studio", // email
   },
-  phone: "0000000000", // phone
-  email: "tyrus@haustle.studio", // email
 });
 ```
 
-All column types in Notion databases are mapped to a typescript type.
+## Querying
 
-| Column Type  | Object         |
-| ------------ | -------------- |
-| Title        | string         |
-| Text         | string         |
-| Select       | string         |
-| Multi-select | Array (string) |
-| Status       | string         |
-| Number       | number         |
-| Date         | Object         |
-| Phone number | string         |
-| Email        | string         |
+Query filters are typed by your generated schema, including nested compound filters. Find Notion filter operators [here](https://developers.notion.com/reference/post-database-query-filter).
 
-**Querying**
+Example single filter:
 
-For each column type you’ll be presented with the available querying filter. Find all filter conditions [here](https://developers.notion.com/reference/post-database-query-filter)
-
-While the querying functionality works, it’s **not complete and there is room for user error**. For instance, the `filter` object should contain one child. Either the column name (signifies single filter), or `and` or `or` (signify compound filters). However there is no typecheck in place to stop adding multiple children
-
-Unlike `add()` , there is no transformation after the inputted object. So the querying object you’re creating is exactly what you’d normally use to query the Notion API. Learn more about them [here](https://developers.notion.com/reference/post-database-query-filter)
-
-Example of a single filter
-
-```tsx
-notion.books.query({
+```ts
+await notion.databases.books.query({
   filter: {
     genre: {
       contains: "Sci-Fi",
@@ -147,121 +258,262 @@ notion.books.query({
   },
   sort: [
     {
-      property: "name",
-      direction: "ascending",
-    },
-    {
-      property: "Author name",
+      property: "Book Name",
       direction: "ascending",
     },
   ],
 });
 ```
 
-Example of compound filters, which is signified with `and` and `or`. You can nest these are far as you want (i.e `and` filters within `or` filter). Learn more [here](https://developers.notion.com/reference/post-database-query-filter#compound-filter-object)
+Example compound filters:
 
-```tsx
-await notion.books.query({
+```ts
+await notion.databases.books.query({
   filter: {
-    or: [
+    and: [
       {
-        genre: {
-          contains: "Sci-Fi",
-        },
+        or: [
+          { genre: { contains: "Sci-Fi" } },
+          { genre: { contains: "Biography" } },
+        ],
       },
-      {
-        genre: {
-          contains: "Biography",
-        },
-      },
+      { numberOfPages: { greater_than: 250 } },
     ],
   },
 });
 ```
 
-Down below is what’s returned on a successful response. `results` being a simplified extracted version of the `rawResponse` (response from Notion API)
+Successful query shape:
 
-```tsx
+```ts
 {
-	rawResponse: { /* Whatever Notion API returns */},
-	results: [
-		{
-			bookName: "How to Change Your Mind",
-			genre: ["Non-fiction"],
-			numberPages: 460,
-			rating: "⭐️⭐️⭐️⭐️"
-		},
-	]
+  rawResponse: { /* full Notion API response */ },
+  results: [
+    {
+      bookName: "How to Change Your Mind",
+      genre: ["Non-fiction"],
+      numberOfPages: 460,
+    },
+  ],
 }
 ```
 
-## Client-side (React)
+### Agents
 
-Notion API currently blocks calls from browser (per CORS)
+Agents are generated from those shared with your integration and exposed at `notion.agents.*`.
 
-You can get around this by creating API endpoints on stack of your choice. I’ve provided examples only for **Next.js**, but the high level implementation should work with any backend.
+#### Basic chat (non-streaming)
 
-If you’re planning to only make server-side calls to your Notion database (from `GetStaticProps` or `GetServerSideProps`). These calls work totally fine, as these functions are executed server-side before page load. So you can ignore the proceeding steps
+- Useful when you want a straightforward request/response flow.
+- Helpful when you plan to fetch message history after completion.
 
-```tsx
-export const getStaticProps: GetStaticProps = async () => {
-	const response = await NotionClient.books.query({
-		filter: {
-			genre: {
-				is_not_empty: true,
-			},
-		},
-	});
-	return {
-		props: {
-			apiResponse: response
-		}
-	}
+```ts
+const chat = await notion.agents.yourAgentName.chat({
+  message: "Create a 5-day high-protein meal plan.",
+});
+
+await notion.agents.yourAgentName.pollThread(chat.threadId);
+
+const messages = await notion.agents.yourAgentName.getMessages(chat.threadId, {
+  role: "agent",
+});
 ```
 
-To execute calls client-side (ex. on button click) an API endpoint is needed to get around CORS. In this example we’re passing the databases `DatabaseSchemaType` as the body of the API call.
+#### Continue an existing thread
 
-```tsx
-import { DatabaseSchemaType } from "@haustle/notion-orm/build/db/books";
+- Useful when you want to preserve context across follow-up prompts.
+- Helpful for chat UIs where users continue the same conversation.
 
-async function addPageToNotionDatabase() {
-  const example: DatabaseSchemaType = {
-    bookName: "How to Change Your Mind",
-    genre: ["Non-fiction"],
-  };
+```ts
+const nextTurn = await notion.agents.yourAgentName.chat({
+  threadId: chat.threadId,
+  message: "Now turn that into a grocery list.",
+});
+```
 
-  // make sure this route reflects your API path
-  await fetch("/api/notion/books", {
-    method: "POST",
-    body: JSON.stringify(example),
+#### Streaming patterns
+
+##### Resume old chat stream
+
+- Useful when you want to continue a streamed conversation with additional context.
+- Helpful for resuming after a page refresh or when the user returns to an existing thread.
+
+```ts
+const previousThreadId = "1f4e6f4a-5b58-4d91-a7fc-2f5f2a0f6bb1"; // from listThreads() or prior chatStream
+
+const thread = await notion.agents.yourAgentName.chatStream({
+  threadId: previousThreadId,
+  message: "Add a 6th day to that meal plan.",
+  onMessage: (msg) => {
+    if (msg.role === "agent") process.stdout.write(msg.content);
+  },
+});
+```
+
+##### Stream to stdout
+
+- Useful for CLI tools and quick terminal feedback.
+- Helpful when you only need incremental text output from the agent.
+
+```ts
+import { AgentClient } from "@haustle/notion-orm";
+
+const thread = await notion.agents.yourAgentName.chatStream({
+  message: "Generate a prep list for that plan.",
+  onMessage: (msg) => {
+    if (msg.role === "agent") process.stdout.write(msg.content);
+  },
+});
+
+const finalResponse = AgentClient.getAgentResponse(thread);
+console.log("\nFinal:", finalResponse);
+```
+
+##### Terminal chat app (`while` loop + thread continuation)
+
+- Useful for local testing and prompt iteration during development.
+- Helpful as a minimal chat REPL before building a UI.
+
+```ts
+import { createInterface } from "node:readline/promises";
+
+const rl = createInterface({
+  input: process.stdin,
+  output: process.stdout,
+});
+
+let threadId: string | undefined;
+
+while (true) {
+  const input = (await rl.question("You: ")).trim();
+  if (!input || input === "/exit") break;
+
+  process.stdout.write("Agent: ");
+  const thread = await notion.agents.yourAgentName.chatStream({
+    message: input,
+    threadId,
+    onMessage: (msg) => {
+      if (msg.role === "agent") process.stdout.write(msg.content);
+    },
   });
+  process.stdout.write("\n");
+
+  threadId = thread.thread_id;
 }
+
+rl.close();
 ```
 
-```jsx
-<button onClick={ async() => await addPageToNotionDatabase()}>
+##### SSE endpoint (stream to browser/client)
+
+- Useful when streaming agent responses into a web app in real time.
+- Helpful for server-to-client incremental updates without WebSockets.
+
+```ts
+app.post("/api/agent/stream", async (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  const { message, threadId } = req.body;
+
+  const thread = await notion.agents.yourAgentName.chatStream({
+    message,
+    threadId,
+    onMessage: (msg) => {
+      if (msg.role !== "agent") return;
+      res.write(`data: ${JSON.stringify({ event: "delta", text: msg.content })}\n\n`);
+    },
+  });
+
+  res.write(`data: ${JSON.stringify({ event: "done", threadId: thread.thread_id })}\n\n`);
+  res.end();
+});
 ```
 
-Example API endpoint below, where we’re taking the body of type `DatabaseSchemaType` and passing it into the respected databases `add()` function to add a new page to the database. Learn more about _Next.js_ API’s and routing [here](https://nextjs.org/docs/api-routes/introduction).
+#### Agent method reference
 
-```tsx
-// pages/api/notion/yourDatabaseName.ts
 
-import type { NextApiRequest, NextApiResponse } from "next";
-import {
-  DatabaseSchemaType,
-  yourDatabaseName,
-} from "@haustle/notion-orm/build/db/yourDatabaseName";
+| method                                           | returns                                                | what it is for                                                  |
+| ------------------------------------------------ | ------------------------------------------------------ | --------------------------------------------------------------- |
+| `listThreads()`                                  | `Array<{ id: string; title: string; status: string }>` | Show recent conversations to users before they select one       |
+| `getThreadInfo(threadId)`                        | `ThreadListItem`                                       | Fetch full metadata for one thread                              |
+| `getThreadTitle(threadId)`                       | `string`                                               | Resolve a thread name for UI labels                             |
+| `chat({ message, threadId? })`                   | `{ status, threadId, isNewChat }`                      | Non-streaming send/continue call, then poll or fetch messages   |
+| `chatStream({ message, threadId?, onMessage? })` | `ThreadInfo`                                           | Streaming UX path with optional callback for each message chunk |
+| `getMessages(threadId, { role? })`               | `Array<{ role: "user" | "agent"; content: string }>`   | Read thread history, optionally filtered to one role            |
+| `pollThread(threadId, options?)`                 | `{ status, threadId, title? }`                         | Wait until Notion finishes processing a thread                  |
+| `AgentClient.getAgentResponse(threadInfo)`       | `string`                                               | Extract combined plain-text agent output from a streamed thread |
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
-  const { method, body } = req;
 
-  if (method === "POST") {
-    const bodyJSON = JSON.parse(body) as DatabaseSchemaType;
-    await yourDatabaseName.add(bodyJSON);
-  }
-}
+`chatStream(...)` returns `ThreadInfo` with the following properties:
+
+
+| ThreadInfo property | type                                                 | description                                              | example                                                                                            |
+| ------------------- | ---------------------------------------------------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `thread_id`         | `string`                                             | Stable thread identifier used to continue a conversation | `"1f4e6f4a-5b58-4d91-a7fc-2f5f2a0f6bb1"`                                                           |
+| `agent_id`          | `string`                                             | Agent identifier that produced the response              | `"2c3c495da03c8078b95500927f02d213"`                                                               |
+| `messages`          | `Array<{ role: "user" | "agent"; content: string }>` | Full message history currently available in the thread   | `[{ role: "user", content: "Plan meals" }, { role: "agent", content: "Here is a 3-day plan..." }]` |
+
+
+`messages` item shape:
+
+
+| message property | type               | description                |
+| ---------------- | ------------------ | -------------------------- |
+| `role`           | `user` | `agent` (`string`) | Message author             |
+| `content`        | `string`           | Plain text message content |
+
+
+## Supported database properties
+
+
+| property_type      | expected returned shape                                              | example value                                 |
+| ------------------ | -------------------------------------------------------------------- | --------------------------------------------- |
+| `title`            | `string`                                                             | `"How to Change Your Mind"`                   |
+| `rich_text`        | `string`                                                      | `"Long-form notes from the page"`             |
+| `number`           | `number`                                                      | `460`                                         |
+| `date`             | `{ start: string; end: string }`                             | `{ start: "2026-03-01", end: "2026-03-02" }`  |
+| `status`           | `string`                                                      | `"In progress"`                               |
+| `select`           | `string`                                                      | `"Non-fiction"`                               |
+| `multi_select`     | `string[]`                                                    | `["Sci-Fi", "Biography"]`                     |
+| `checkbox`         | `boolean`                                                            | `true`                                        |
+| `email`            | `string`                                                      | `"tyrus@haustle.studio"`                      |
+| `phone_number`     | `string`                                                      | `"0000000000"`                                |
+| `url`              | `string`                                                      | `"https://developers.notion.com/"`            |
+| `formula`          | `string | number | boolean | { start: string; end?: string }` | `42`                                          |
+| `files`            | `Array<{ name: string; url: string }>`                               | `[{ name: "brief.pdf", url: "https://..." }]` |
+| `people`           | `string[]`                                                           | `["Ada Lovelace", "user_123"]`                |
+| `relation`         | `string[]`                                                           | `["6f7f9cbf8d4548f8a194661e73f7f5d9"]`        |
+| `created_by`       | `string`                                                      | `"Ada Lovelace"`                              |
+| `last_edited_by`   | `string`                                                      | `"user_123"`                                  |
+| `created_time`     | `string`                                                      | `"2026-03-01T10:30:00.000Z"`                  |
+| `last_edited_time` | `string`                                                      | `"2026-03-01T13:15:00.000Z"`                  |
+| `unique_id`        | `string`                                                      | `"TASK-42"`                                   |
+
+
+`rollup` is not supported yet.
+
+Filterable properties are a subset (for example, `formula`, `files`, and `relation` are currently non-filterable).
+
+## Project Structure
+
+```txt
+.
+├── src
+│   ├── cli              # notion init / add / sync
+│   ├── config           # config discovery, loading, and validation
+│   ├── client           # runtime DatabaseClient + AgentClient
+│   │   └── query        # typed filters + response simplification
+│   ├── ast              # code generation internals
+│   │   ├── database
+│   │   ├── agents
+│   │   └── shared
+│   └── types            # local type bridges
+├── plugins              # lint/tooling helpers
+└── build                # generated output (after build/sync)
+    ├── src
+    ├── db
+    └── agents
 ```
+
