@@ -159,9 +159,9 @@ export const AST_RUNTIME_CONSTANTS = {
 	PACKAGE_LOG_PREFIX: "[@haustle/notion-orm]",
 
 	/**
-	 * CLI command to generate database types
+	 * CLI command to sync database and agent types
 	 */
-	CLI_GENERATE_COMMAND: "notion generate",
+	CLI_GENERATE_COMMAND: "notion sync",
 
 	/**
 	 * Schema drift error message prefix
@@ -172,7 +172,7 @@ export const AST_RUNTIME_CONSTANTS = {
 	 * Help message for fixing schema drift
 	 */
 	SCHEMA_DRIFT_HELP_MESSAGE:
-		"To easily fix this, please run `notion generate` to refresh all database schemas.",
+		"To easily fix this, please run `notion sync` to refresh all database schemas.",
 } as const;
 
 /**

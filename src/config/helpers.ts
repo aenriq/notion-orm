@@ -92,7 +92,7 @@ export async function initializeNotionConfigFile(
     console.log(
       "   • Use `notion add <data-source-id or URL>` to append databases"
     );
-    console.log("   • Run `notion generate` to build local types");
+    console.log("   • Run `notion sync` to build local types");
   } catch (error: unknown) {
     console.error("❌ Error creating config file:");
     console.error(error);

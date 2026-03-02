@@ -39,7 +39,7 @@ export function createConfigTemplate(isTS: boolean): string {
 		"\t\t// Use: notion add <database-id> --type database",
 		"\t],",
 		"\tagents: [",
-		"\t\t// Auto-populated by: notion generate",
+		"\t\t// Auto-populated by: notion sync",
 		"\t],",
 		"};",
 		"",
@@ -56,7 +56,7 @@ export function showSetupInstructions(): void {
 		"1. Run: notion init [--ts|--js] (defaults to TypeScript when tsconfig.json is present)",
 	);
 	console.log("2. Add your Notion integration token and database IDs");
-	console.log("3. Run: notion generate (agents are auto-discovered)");
+	console.log("3. Run: notion sync (agents are auto-discovered)");
 
 	console.log("\n📝 Example JavaScript config (notion.config.js):");
 	console.log(`
@@ -73,7 +73,7 @@ const NotionConfig = {
 		"database-id-2",
 	],
 	agents: [
-		// Auto-populated by: notion generate
+		// Auto-populated by: notion sync
 	],
 };
 
@@ -95,7 +95,7 @@ const NotionConfig = {
 		"database-id-2",
 	],
 	agents: [
-		// Auto-populated by: notion generate
+		// Auto-populated by: notion sync
 	],
 };
 

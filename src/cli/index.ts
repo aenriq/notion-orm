@@ -17,7 +17,7 @@ import {
 	writeConfigFileWithAST,
 } from "./helpers";
 
-async function runGenerate(): Promise<void> {
+async function runSync(): Promise<void> {
 	try {
 		await validateConfig();
 
@@ -44,7 +44,7 @@ async function runGenerate(): Promise<void> {
 			}
 		}
 	} catch (error) {
-		console.error("❌ Error generating types:");
+		console.error("❌ Error syncing types:");
 		console.error(error);
 		process.exit(1);
 	}
@@ -142,7 +142,7 @@ async function runAdd(input: string, entityType?: "database"): Promise<void> {
 		}
 
 		console.log(
-			"\n\n📄 Tip: In the future run `notion generate` to refresh all database schemas/types",
+			"\n\n📄 Tip: In the future run `notion sync` to refresh all database schemas/types",
 		);
 	}
 }
@@ -154,10 +154,13 @@ function showHelperMessage(): void {
 		"  notion init [--ts|--js]                    - Create a starter notion.config file",
 	);
 	console.log(
-		"  notion generate                                - Generate types for all databases and agents",
+		"  notion sync                                - Sync types for all databases and agents",
 	);
 	console.log(
 		"  notion add <id-or-url> [--type database]  - Add database to config and generate types",
+	);
+	console.log(
+		"  notion generate                            - Deprecated alias for `notion sync`",
 	);
 	console.log("\nExamples:");
 	console.log(
@@ -166,7 +169,7 @@ function showHelperMessage(): void {
 	console.log(
 		"  notion add https://www.notion.so/workspace/c88c5ccf109f4e71937d5d3b3ddfeade?v=123",
 	);
-	console.log("  notion generate");
+	console.log("  notion sync");
 	showSetupInstructions();
 }
 
@@ -185,8 +188,11 @@ async function main() {
 		return await initializeNotionConfigFile({
 			force: forceTS ? "ts" : forceJS ? "js" : undefined,
 		});
+	} else if (args.length >= 1 && args[0] === "sync") {
+		return await runSync();
 	} else if (args.length >= 1 && args[0] === "generate") {
-		return await runGenerate();
+		console.warn("⚠️  `notion generate` is deprecated. Use `notion sync`.");
+		return await runSync();
 	} else if (args.length >= 2 && args[0] === "add") {
 		const typeIndex = args.indexOf("--type");
 		const type =
