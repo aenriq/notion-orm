@@ -6,9 +6,13 @@
 import * as ts from "typescript";
 import type { DatabasePropertyType } from "../../client/queryTypes";
 
+/**
+ * Lookup map used to generate strongly-typed property/type metadata objects
+ * that power `Query<Schema, ColumnNameToColumnType>`.
+ */
 type camelPropertyNameToNameAndTypeMapType = Record<
-  string,
-  { columnName: string; type: DatabasePropertyType }
+	string,
+	{ columnName: string; type: DatabasePropertyType }
 >;
 
 /**
@@ -149,14 +153,17 @@ function createOtherStringProp() {
   ]);
 }
 
+/**
+ * Builds `<PropertyValuesConst>[number]` element type reference.
+ */
 function createPropertyValuesElementType(arrayIdentifier: string) {
-  return ts.factory.createIndexedAccessTypeNode(
-    ts.factory.createTypeQueryNode(
-      ts.factory.createIdentifier(arrayIdentifier),
-      undefined
-    ),
-    ts.factory.createKeywordTypeNode(ts.SyntaxKind.NumberKeyword)
-  );
+	return ts.factory.createIndexedAccessTypeNode(
+		ts.factory.createTypeQueryNode(
+			ts.factory.createIdentifier(arrayIdentifier),
+			undefined,
+		),
+		ts.factory.createKeywordTypeNode(ts.SyntaxKind.NumberKeyword),
+	);
 }
 
 /**
@@ -424,43 +431,43 @@ export function createClassSpecificTypeExports(args: {
   const { databaseName, schemaIdentifier } = args;
   const pascalDatabaseName = toPascalCase(databaseName);
   return [
-    // Export DatabaseSchemaType as [ClassName]Schema
-    ts.factory.createTypeAliasDeclaration(
-      [ts.factory.createToken(ts.SyntaxKind.ExportKeyword)],
-      ts.factory.createIdentifier(`${databaseName}Schema`),
-      undefined,
-      ts.factory.createTypeReferenceNode(
-        ts.factory.createIdentifier("DatabaseSchemaType"),
-        undefined
-      )
-    ),
-    // Export ColumnNameToColumnType as [ClassName]ColumnTypes
-    ts.factory.createTypeAliasDeclaration(
-      [ts.factory.createToken(ts.SyntaxKind.ExportKeyword)],
-      ts.factory.createIdentifier(`${databaseName}ColumnTypes`),
-      undefined,
-      ts.factory.createTypeReferenceNode(
-        ts.factory.createIdentifier("ColumnNameToColumnType"),
-        undefined
-      )
-    ),
-    // Export inferred schema type
-    ts.factory.createTypeAliasDeclaration(
-      [ts.factory.createToken(ts.SyntaxKind.ExportKeyword)],
-      ts.factory.createIdentifier(`${pascalDatabaseName}SchemaType`),
-      undefined,
-      ts.factory.createTypeReferenceNode(
-        ts.factory.createQualifiedName(
-          ts.factory.createIdentifier("z"),
-          ts.factory.createIdentifier("infer")
-        ),
-        [
-          ts.factory.createTypeQueryNode(
-            ts.factory.createIdentifier(schemaIdentifier),
-            undefined
-          ),
-        ]
-      )
-    ),
-  ];
+			// Export DatabaseSchemaType as [DatabaseName]Schema
+			ts.factory.createTypeAliasDeclaration(
+				[ts.factory.createToken(ts.SyntaxKind.ExportKeyword)],
+				ts.factory.createIdentifier(`${databaseName}Schema`),
+				undefined,
+				ts.factory.createTypeReferenceNode(
+					ts.factory.createIdentifier("DatabaseSchemaType"),
+					undefined,
+				),
+			),
+			// Export ColumnNameToColumnType as [DatabaseName]ColumnTypes
+			ts.factory.createTypeAliasDeclaration(
+				[ts.factory.createToken(ts.SyntaxKind.ExportKeyword)],
+				ts.factory.createIdentifier(`${databaseName}ColumnTypes`),
+				undefined,
+				ts.factory.createTypeReferenceNode(
+					ts.factory.createIdentifier("ColumnNameToColumnType"),
+					undefined,
+				),
+			),
+			// Export inferred schema type
+			ts.factory.createTypeAliasDeclaration(
+				[ts.factory.createToken(ts.SyntaxKind.ExportKeyword)],
+				ts.factory.createIdentifier(`${pascalDatabaseName}SchemaType`),
+				undefined,
+				ts.factory.createTypeReferenceNode(
+					ts.factory.createQualifiedName(
+						ts.factory.createIdentifier("z"),
+						ts.factory.createIdentifier("infer"),
+					),
+					[
+						ts.factory.createTypeQueryNode(
+							ts.factory.createIdentifier(schemaIdentifier),
+							undefined,
+						),
+					],
+				),
+			),
+		];
 }

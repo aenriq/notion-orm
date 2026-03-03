@@ -5,51 +5,59 @@
 
 import * as ts from "typescript";
 
-import type { DatabasePropertyType } from "../../client/queryTypes";
+import type { SupportedNotionColumnType } from "../../client/queryTypes";
 
 export interface ZodMetadata {
 		propName: string;
 		columnName: string;
-		type: DatabasePropertyType;
+		type: SupportedNotionColumnType;
 		isRequired: boolean;
 		options?: string[];
 		propertyValuesIdentifier?: string;
 	}
 
+/**
+ * Creates the exported `const <SchemaName> = z.object({...})` statement
+ * from per-column metadata collected during database AST generation.
+ */
 export function createZodSchema(args: {
-		identifier: string;
-		columns: ZodMetadata[];
-	}) {
-		const { identifier, columns } = args;
-		const properties = columns.map((column) =>
-			ts.factory.createPropertyAssignment(
-				ts.factory.createIdentifier(column.propName),
-				createZodPropertyExpression(column),
-			),
-		);
-		return ts.factory.createVariableStatement(
-			[ts.factory.createToken(ts.SyntaxKind.ExportKeyword)],
-			ts.factory.createVariableDeclarationList(
-				[
-					ts.factory.createVariableDeclaration(
-						ts.factory.createIdentifier(identifier),
-						undefined,
-						undefined,
-						ts.factory.createCallExpression(
-							ts.factory.createPropertyAccessExpression(
-								ts.factory.createIdentifier("z"),
-								ts.factory.createIdentifier("object"),
-							),
-							undefined,
-							[ts.factory.createObjectLiteralExpression(properties, true)],
+	identifier: string;
+	columns: ZodMetadata[];
+}) {
+	const { identifier, columns } = args;
+	const properties = columns.map((column) =>
+		ts.factory.createPropertyAssignment(
+			ts.factory.createIdentifier(column.propName),
+			createZodPropertyExpression(column),
+		),
+	);
+	return ts.factory.createVariableStatement(
+		[ts.factory.createToken(ts.SyntaxKind.ExportKeyword)],
+		ts.factory.createVariableDeclarationList(
+			[
+				ts.factory.createVariableDeclaration(
+					ts.factory.createIdentifier(identifier),
+					undefined,
+					undefined,
+					ts.factory.createCallExpression(
+						ts.factory.createPropertyAccessExpression(
+							ts.factory.createIdentifier("z"),
+							ts.factory.createIdentifier("object"),
 						),
+						undefined,
+						[ts.factory.createObjectLiteralExpression(properties, true)],
 					),
-				],
-				ts.NodeFlags.Const,
-			),
-		);
-	}
+				),
+			],
+			ts.NodeFlags.Const,
+		),
+	);
+}
 
+/**
+ * Maps each supported Notion property type to a matching Zod expression.
+ * This keeps runtime validation aligned with generated TypeScript schema types.
+ */
 export function createZodPropertyExpression(column: ZodMetadata) {
 	const optional = !column.isRequired;
 	switch (column.type) {
@@ -118,17 +126,22 @@ export function createZodPropertyExpression(column: ZodMetadata) {
 			});
 		}
 		default: {
-			return applyOptionalNullable(createZodPrimitiveCall("unknown"), {
-				optional: true,
-				nullable: true,
-			});
+			return assertNever(column.type);
 		}
 	}
 }
 
-function createZodPrimitiveCall(
-	method: "string" | "number" | "boolean" | "unknown",
-) {
+/**
+ * Exhaustiveness guard so new supported column types cannot be silently ignored.
+ */
+function assertNever(value: never): never {
+	throw new Error(`Unhandled supported property type: ${String(value)}`);
+}
+
+/**
+ * Creates primitive `z.<type>()` calls.
+ */
+function createZodPrimitiveCall(method: "string" | "number" | "boolean") {
 	return ts.factory.createCallExpression(
 		ts.factory.createPropertyAccessExpression(
 			ts.factory.createIdentifier("z"),
@@ -139,6 +152,9 @@ function createZodPrimitiveCall(
 	);
 }
 
+/**
+ * Applies `.nullable()` and `.optional()` wrappers in a predictable order.
+ */
 function applyOptionalNullable(
 	expression: ts.Expression,
 	args: { optional?: boolean; nullable?: boolean },
@@ -168,6 +184,10 @@ function applyOptionalNullable(
 	return currentExpression;
 }
 
+/**
+ * Select/status columns emit `z.enum(PropertyValues)` when options exist;
+ * otherwise they degrade to `z.string()` for resilience.
+ */
 function createZodEnumExpression(column: ZodMetadata) {
 	if (
 		column.options &&
@@ -186,6 +206,9 @@ function createZodEnumExpression(column: ZodMetadata) {
 	return createZodPrimitiveCall("string");
 }
 
+/**
+ * Multi-select columns emit arrays of the same enum expression used by select/status.
+ */
 function createZodArrayEnumExpression(column: ZodMetadata) {
 	const enumExpression = createZodEnumExpression(column);
 	return ts.factory.createCallExpression(
@@ -198,6 +221,9 @@ function createZodArrayEnumExpression(column: ZodMetadata) {
 	);
 }
 
+/**
+ * Utility for Notion relation/people arrays represented as string IDs.
+ */
 function createZodStringArrayExpression() {
 	return ts.factory.createCallExpression(
 		ts.factory.createPropertyAccessExpression(
@@ -209,6 +235,10 @@ function createZodStringArrayExpression() {
 	);
 }
 
+/**
+ * Builds files validation shape:
+ * `Array<{ name: string; url: string }>`
+ */
 function createZodFilesExpression() {
 	const fileName = ts.factory.createPropertyAssignment(
 		ts.factory.createIdentifier("name"),
@@ -238,6 +268,10 @@ function createZodFilesExpression() {
 	);
 }
 
+/**
+ * Builds date validation shape:
+ * `{ start: string; end?: string | null }` with optionality inherited from column.
+ */
 function createZodDateExpression(optional: boolean) {
 	const startAssignment = ts.factory.createPropertyAssignment(
 		ts.factory.createIdentifier("start"),
@@ -269,6 +303,9 @@ function createZodDateExpression(optional: boolean) {
 	});
 }
 
+/**
+ * Builds formula output validation union compatible with Notion formula results.
+ */
 function createZodFormulaExpression() {
 	const formulaDateObject = ts.factory.createCallExpression(
 		ts.factory.createPropertyAccessExpression(

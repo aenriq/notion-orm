@@ -37,10 +37,16 @@ function getPackageBuildDir(): string {
 	return path.resolve(__dirname, "../../../");
 }
 
+/**
+ * Canonical output directory for generated database modules (`build/db/*`).
+ */
 function getDatabasesDir(): string {
 	return path.join(getPackageBuildDir(), "db");
 }
 
+/**
+ * Canonical output directory for generated agent modules (`build/agents/*`).
+ */
 function getAgentsDir(): string {
 	return path.join(getPackageBuildDir(), "agents");
 }
@@ -48,6 +54,10 @@ function getAgentsDir(): string {
 export const DATABASES_DIR = getDatabasesDir();
 export const AGENTS_DIR = getAgentsDir();
 
+/**
+ * Filesystem targets used by AST emitters.
+ * These getters intentionally compute lazily so tests can override runtime cwd/env safely.
+ */
 export const AST_FS_PATHS = {
 	get BUILD_SRC_DIR(): string {
 		return path.join(getPackageBuildDir(), "src");
@@ -62,6 +72,13 @@ export const AST_FS_PATHS = {
 	 */
 	get metadataFile(): string {
 		return path.resolve(getDatabasesDir(), AST_FS_FILENAMES.METADATA);
+	},
+
+	/**
+	 * Build index.ts file path
+	 */
+	get buildIndexTs(): string {
+		return path.resolve(AST_FS_PATHS.BUILD_SRC_DIR, AST_FS_FILENAMES.INDEX_TS);
 	},
 
 	/**
@@ -129,18 +146,18 @@ export const AST_IMPORT_PATHS = {
 
 	/**
 	 * Generate import path for a database class
-	 * @param className - The database class name (e.g., "BookTracker")
+	 * @param name - The generated database module name (e.g., "bookTracker")
 	 */
-	databaseClass(className: string): string {
-		return `../db/${className}`;
+	databaseClass(name: string): string {
+		return `../db/${name}`;
 	},
 
 	/**
 	 * Generate import path for an agent class
-	 * @param className - The agent class name (e.g., "FoodManager")
+	 * @param name - The generated agent module name (e.g., "foodManager")
 	 */
-	agentClass(className: string): string {
-		return `../agents/${className}`;
+	agentClass(name: string): string {
+		return `../agents/${name}`;
 	},
 } as const;
 

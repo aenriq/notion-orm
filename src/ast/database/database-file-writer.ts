@@ -3,13 +3,17 @@
  * This module coordinates property generation, AST building, and file writing.
  */
 
-import type { GetDataSourceResponse } from "@notionhq/client/build/src/api-endpoints.js";
+import type {
+	DataSourceObjectResponse,
+	GetDataSourceResponse,
+} from "@notionhq/client/build/src/api-endpoints.js";
 import fs from "fs";
 import path from "path";
 import * as ts from "typescript";
 import {
 	type DatabasePropertyType,
 	isSupportedPropertyType,
+	type SupportedNotionColumnType,
 } from "../../client/queryTypes";
 import { camelize } from "../../helpers";
 import {
@@ -23,13 +27,30 @@ import {
 	toPascalCase,
 } from "../shared/ast-builders";
 import { AST_IMPORT_PATHS, DATABASES_DIR } from "../shared/constants";
-import { propertyASTGenerators } from "./notion-column-generators";
+import { emitTsAndJsArtifacts } from "../shared/emit/ts-emit-core";
+import { TS_EMIT_OPTIONS_GENERATED } from "../shared/emit/ts-emit-options";
+import {
+	propertyASTGenerators,
+	type SupportedNotionProperty,
+} from "./notion-column-generators";
 import { createZodSchema, type ZodMetadata } from "./zod-schema";
 
 type camelPropertyNameToNameAndTypeMapType = Record<
 	string,
 	{ columnName: string; type: DatabasePropertyType }
 >;
+
+type NotionDataSourceProperty = DataSourceObjectResponse["properties"][string];
+
+/**
+ * Narrows Notion property payloads to the subset supported by our generators.
+ * Unsupported property types are skipped with a warning during emit.
+ */
+function isSupportedNotionProperty(
+	property: NotionDataSourceProperty,
+): property is SupportedNotionProperty {
+	return isSupportedPropertyType(property.type);
+}
 
 /**
  * Creates TypeScript files for a single Notion database.
@@ -53,20 +74,23 @@ export async function createTypescriptFileForDatabase(
 			? dataSourceResponse.title[0].plain_text
 			: "DEFAULT_DATABASE_NAME";
 
-	const databaseClassName = camelize(databaseName);
+	const databaseModuleName = camelize(databaseName);
 
 	const databaseColumnTypeProps: ts.TypeElement[] = [];
 
-	// Looping through each column of database
+	// Walk each Notion property and build coordinated AST outputs:
+	// 1) TS schema property type
+	// 2) optional enum value array const
+	// 3) Zod metadata used to build runtime schema validators
 	Object.entries(properties).forEach(([propertyName, value], index) => {
-		const { type: propertyType } = value;
-		if (!isSupportedPropertyType(propertyType)) {
-			// biome-ignore lint/suspicious/noConsole: provide feedback when skipping
-			// unsupported schema columns
+		const unsupportedPropertyType = value.type;
+		if (!isSupportedNotionProperty(value)) {
 			console.error(`${index === 0 ? "\n" : ""}
-				[${databaseClassName}] Property '${propertyName}' with type '${propertyType}' is not supported and will be skipped.`);
+				[${databaseModuleName}] Property '${propertyName}' with type '${unsupportedPropertyType}' is not supported and will be skipped.`);
 			return;
 		}
+
+		const propertyType: SupportedNotionColumnType = value.type;
 
 		// Taking the column name and camelizing it for typescript use
 		const camelizedColumnName = camelize(propertyName);
@@ -112,7 +136,7 @@ export async function createTypescriptFileForDatabase(
 		});
 	});
 
-	const schemaIdentifier = `${toPascalCase(databaseClassName)}Schema`;
+	const schemaIdentifier = `${toPascalCase(databaseModuleName)}Schema`;
 	const zodSchemaStatement = createZodSchema({
 		identifier: schemaIdentifier,
 		columns: zodColumns,
@@ -145,54 +169,37 @@ export async function createTypescriptFileForDatabase(
 		...enumConstStatements,
 		zodSchemaStatement,
 		DatabaseSchemaType,
-		createColumnNameToColumnProperties(camelPropertyNameToNameAndTypeMap),
+		ts.factory.createVariableStatement(
+			undefined,
+			createColumnNameToColumnProperties(camelPropertyNameToNameAndTypeMap),
+		),
 		createColumnNameToColumnType(),
 		createQueryTypeExport(),
 		createDatabaseClassExport({
-			databaseName: databaseClassName,
+			databaseName: databaseModuleName,
 			schemaIdentifier,
 			schemaTitle: databaseName,
 		}),
 		// Export class-specific type aliases for the custom NotionORM class
 		...createClassSpecificTypeExports({
-			databaseName: databaseClassName,
+			databaseName: databaseModuleName,
 			schemaIdentifier,
 		}),
 	]);
-
-	const sourceFile = ts.createSourceFile(
-		"",
-		"",
-		ts.ScriptTarget.ESNext,
-		true,
-		ts.ScriptKind.TS,
-	);
-	const printer = ts.createPrinter();
-
-	const typescriptCodeToString = printer.printList(
-		ts.ListFormat.MultiLine,
-		TsNodesForDatabaseFile,
-		sourceFile,
-	);
-	const transpileToJavaScript = ts.transpile(typescriptCodeToString, {
-		module: ts.ModuleKind.None,
-		target: ts.ScriptTarget.ESNext,
-	});
 
 	// Create databases output folder
 	if (!fs.existsSync(DATABASES_DIR)) {
 		fs.mkdirSync(DATABASES_DIR, { recursive: true });
 	}
 
-	// Create TypeScript and JavaScript files
-	fs.writeFileSync(
-		path.resolve(DATABASES_DIR, `${databaseClassName}.ts`),
-		typescriptCodeToString,
-	);
-	fs.writeFileSync(
-		path.resolve(DATABASES_DIR, `${databaseClassName}.js`),
-		transpileToJavaScript,
-	);
+	emitTsAndJsArtifacts({
+		nodes: TsNodesForDatabaseFile,
+		tsPath: path.resolve(DATABASES_DIR, `${databaseModuleName}.ts`),
+		jsPath: path.resolve(DATABASES_DIR, `${databaseModuleName}.js`),
+		module: TS_EMIT_OPTIONS_GENERATED.module,
+		target: TS_EMIT_OPTIONS_GENERATED.target,
+	});
 
-	return { databaseName, databaseClassName, databaseId: dataSourceId };
+	// Metadata returns drive metadata cache + top-level registry/index emission.
+	return { databaseName, databaseModuleName, databaseId: dataSourceId };
 }

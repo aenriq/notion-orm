@@ -3,6 +3,7 @@
  * Maps Notion property types to AST generators that create TypeScript types and Zod schemas.
  */
 
+import type { DataSourceObjectResponse } from "@notionhq/client/build/src/api-endpoints.js";
 import * as ts from "typescript";
 import type { SupportedNotionColumnType } from "../../client/queryTypes";
 import {
@@ -23,15 +24,50 @@ export interface PropertyASTResult {
 }
 
 export interface PropertyASTContext {
-	columnName: string;
-	camelizedName: string;
-	// TODO(tyrus): This is no bueno. Should fix
-	columnValue: any;
-}
+		columnName: string;
+		camelizedName: string;
+		columnValue: SupportedNotionProperty;
+	}
 
+/**
+ * Per-property generator contract:
+ * produce TS property AST and metadata needed to later build the Zod schema.
+ */
 export type PropertyASTGenerator = (
 	context: PropertyASTContext,
 ) => PropertyASTResult | null;
+
+/**
+ * Typed Notion property union constrained to ORM-supported column types.
+ */
+export type SupportedNotionProperty = Extract<
+	DataSourceObjectResponse["properties"][string],
+	{ type: SupportedNotionColumnType }
+>;
+
+type SelectProperty = Extract<SupportedNotionProperty, { type: "select" }>;
+type StatusProperty = Extract<SupportedNotionProperty, { type: "status" }>;
+type MultiSelectProperty = Extract<
+	SupportedNotionProperty,
+	{ type: "multi_select" }
+>;
+
+/**
+ * Normalizes option extraction across select-like Notion property variants.
+ */
+function extractOptionNames(args: {
+	columnValue: SelectProperty | StatusProperty | MultiSelectProperty;
+}): string[] {
+	const { columnValue } = args;
+	switch (columnValue.type) {
+		case "select":
+			return columnValue.select.options.map((option) => option.name);
+		case "status":
+			return columnValue.status.options.map((option) => option.name);
+		case "multi_select":
+			return columnValue.multi_select.options.map((option) => option.name);
+	}
+}
 
 export const propertyASTGenerators = {
 	title: ({ camelizedName }) => ({
@@ -114,8 +150,10 @@ export const propertyASTGenerators = {
 	}),
 
 	select: ({ camelizedName, columnValue }) => {
-		const options: string[] =
-			columnValue.select?.options?.map((x: any) => x.name) ?? [];
+		if (columnValue.type !== "select") {
+			return null;
+		}
+		const options = extractOptionNames({ columnValue });
 		const propertyValuesIdentifier = `${toPascalCase(
 			camelizedName,
 		)}PropertyValues`;
@@ -139,8 +177,10 @@ export const propertyASTGenerators = {
 	},
 
 	status: ({ camelizedName, columnValue }) => {
-		const options: string[] =
-			columnValue.status?.options?.map((x: any) => x.name) ?? [];
+		if (columnValue.type !== "status") {
+			return null;
+		}
+		const options = extractOptionNames({ columnValue });
 		const propertyValuesIdentifier = `${toPascalCase(
 			camelizedName,
 		)}PropertyValues`;
@@ -164,8 +204,10 @@ export const propertyASTGenerators = {
 	},
 
 	multi_select: ({ camelizedName, columnValue }) => {
-		const options: string[] =
-			columnValue.multi_select?.options?.map((x: any) => x.name) ?? [];
+		if (columnValue.type !== "multi_select") {
+			return null;
+		}
+		const options = extractOptionNames({ columnValue });
 		const propertyValuesIdentifier = `${toPascalCase(
 			camelizedName,
 		)}PropertyValues`;
@@ -276,6 +318,9 @@ export const propertyASTGenerators = {
 	}),
 } as const satisfies Record<SupportedNotionColumnType, PropertyASTGenerator>;
 
+/**
+ * Builds `name?: string[]` property signatures (people/relation columns).
+ */
 function createStringArrayProperty(name: string): ts.TypeElement {
 	return ts.factory.createPropertySignature(
 		undefined,
@@ -287,6 +332,9 @@ function createStringArrayProperty(name: string): ts.TypeElement {
 	);
 }
 
+/**
+ * Builds `name?: Array<{ name: string; url: string }>` for files columns.
+ */
 function createFilesProperty(name: string): ts.TypeElement {
 	const fileObjectType = ts.factory.createTypeLiteralNode([
 		ts.factory.createPropertySignature(
@@ -311,6 +359,10 @@ function createFilesProperty(name: string): ts.TypeElement {
 	);
 }
 
+/**
+ * Builds formula output union type:
+ * `string | number | boolean | { start; end? } | null`.
+ */
 function createFormulaProperty(name: string): ts.TypeElement {
 	const dateType = ts.factory.createTypeLiteralNode([
 		ts.factory.createPropertySignature(

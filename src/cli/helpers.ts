@@ -1,11 +1,9 @@
-import * as babelGenerator from "@babel/generator";
-import * as parser from "@babel/parser";
-import * as t from "@babel/types";
 import fs from "fs";
 import path from "path";
-import { loadConfig } from "../config/loadConfig";
-
-const generate = babelGenerator.default || babelGenerator;
+import {
+	renderConfigTemplateModule,
+	updateConfigListInConfigModule,
+} from "../ast/shared/emit/config-emitter";
 
 export function shouldUseTypeScript(): boolean {
 	const cwd = process.cwd();
@@ -26,28 +24,10 @@ export function shouldUseTypeScript(): boolean {
 }
 
 export function createConfigTemplate(isTS: boolean): string {
-	const lines = [
-		"// Be sure to create a .env.local file and add your NOTION_KEY",
-		"",
-		"// If you don't have an API key, sign up for free ",
-		"// [here](https://developers.notion.com)",
-		"",
-		'const auth = process.env.NOTION_KEY || "your-notion-api-key-here";',
-		"const NotionConfig = {",
-		"\tauth,",
-		"\tdatabases: [",
-		"\t\t// Use: notion add <database-id> --type database",
-		"\t],",
-		"\tagents: [",
-		"\t\t// Auto-populated by: notion sync",
-		"\t],",
-		"};",
-		"",
-		isTS ? "export default NotionConfig;" : "module.exports = NotionConfig;",
-		"",
-	];
-
-	return `${lines.join("\n")}\n`;
+	const renderedTemplate = renderConfigTemplateModule({ isTS });
+	return renderedTemplate.endsWith("\n")
+		? renderedTemplate
+		: `${renderedTemplate}\n`;
 }
 
 export function showSetupInstructions(): void {
@@ -121,26 +101,6 @@ export function validateAndGetUndashedUuid(id: string): string | undefined {
 	return undashedUuid;
 }
 
-async function writeConfigFile(args: {
-	configPath: string;
-	config: unknown;
-	isTS: boolean;
-}): Promise<void> {
-	const { configPath, config, isTS } = args;
-
-	try {
-		const configContent = isTS
-			? `export default ${JSON.stringify(config, null, 4)};`
-			: `module.exports = ${JSON.stringify(config, null, 4)};`;
-
-		fs.writeFileSync(configPath, configContent);
-	} catch (error: unknown) {
-		console.error("❌ Error writing config file:");
-		console.error(error);
-		process.exit(1);
-	}
-}
-
 export async function writeConfigFileWithAST(
 	configPath: string,
 	newDatabaseId: string,
@@ -149,137 +109,22 @@ export async function writeConfigFileWithAST(
 ): Promise<boolean> {
 	try {
 		const originalContent = fs.readFileSync(configPath, "utf-8");
-
-		const ast = parser.parse(originalContent, {
-			sourceType: "module",
-			allowImportExportEverywhere: true,
-			plugins: isTS ? ["typescript"] : [],
+		const output = updateConfigListInConfigModule({
+			sourceCode: originalContent,
+			isTS,
+			key: "databases",
+			items: [{ value: newDatabaseId, comment: name }],
+			strategy: "appendUnique",
 		});
-
-		let modified = false;
-
-		function modifyDatabaseIdsInObject(objExpression: any): void {
-			if (!objExpression || !objExpression.properties) return;
-			for (const prop of objExpression.properties) {
-				if (
-					t.isObjectProperty(prop) &&
-					t.isIdentifier(prop.key) &&
-					prop.key.name === "databases" &&
-					t.isArrayExpression(prop.value)
-				) {
-					const existingIds = prop.value.elements
-						.filter((el: any) => {
-							if (t.isStringLiteral(el)) return true;
-							if (
-								t.isExpressionStatement(el) &&
-								t.isStringLiteral(el.expression)
-							) {
-								return true;
-							}
-							return false;
-						})
-						.map((el: any) => {
-							if (t.isStringLiteral(el)) return el.value;
-							if (
-								t.isExpressionStatement(el) &&
-								t.isStringLiteral(el.expression)
-							) {
-								return el.expression.value;
-							}
-							return null;
-						})
-						.filter((id: string | null) => id !== null);
-
-					if (!existingIds.includes(newDatabaseId)) {
-						const stringLiteral = t.stringLiteral(newDatabaseId);
-						if (name) {
-							t.addComment(stringLiteral, "trailing", ` ${name} `, false);
-						}
-						prop.value.elements.push(stringLiteral);
-						modified = true;
-					}
-					break;
-				}
-			}
+		if (!output.modified) {
+			return false;
 		}
-
-		function visitNode(node: any): void {
-			if (t.isVariableDeclarator(node) && t.isIdentifier(node.id)) {
-				let objectExpr = node.init as any;
-				if (objectExpr && t.isTSSatisfiesExpression(objectExpr)) {
-					objectExpr = objectExpr.expression;
-				}
-				if (t.isObjectExpression(objectExpr)) {
-					modifyDatabaseIdsInObject(objectExpr);
-				}
-			} else if (
-				t.isAssignmentExpression(node) &&
-				t.isMemberExpression(node.left) &&
-				t.isIdentifier(node.left.property) &&
-				node.left.property.name === "exports"
-			) {
-				let objectExpr = node.right as any;
-				if (objectExpr && t.isTSSatisfiesExpression(objectExpr)) {
-					objectExpr = objectExpr.expression;
-				}
-				if (t.isObjectExpression(objectExpr)) {
-					modifyDatabaseIdsInObject(objectExpr);
-				}
-			} else if (t.isExportDefaultDeclaration(node)) {
-				let objectExpr = node.declaration as any;
-				if (objectExpr && t.isTSSatisfiesExpression(objectExpr)) {
-					objectExpr = objectExpr.expression;
-				}
-				if (t.isObjectExpression(objectExpr)) {
-					modifyDatabaseIdsInObject(objectExpr);
-				}
-			}
-		}
-
-		function traverse(node: any): void {
-			if (!node || typeof node !== "object") return;
-
-			visitNode(node);
-
-			for (const key in node) {
-				if (node[key] && typeof node[key] === "object") {
-					if (Array.isArray(node[key])) {
-						node[key].forEach(traverse);
-					} else {
-						traverse(node[key]);
-					}
-				}
-			}
-		}
-
-		traverse(ast);
-
-		if (modified) {
-			const output = generate(ast, {
-				retainLines: true,
-				concise: false,
-			});
-
-			fs.writeFileSync(configPath, output.code);
-			return true;
-		}
-
-		return false;
+		fs.writeFileSync(configPath, output.code);
+		return true;
 	} catch (error: unknown) {
 		console.error("❌ Error updating config file with AST:");
 		console.error(error);
-		console.log("⚠️  Falling back to simple JSON replacement...");
-
-		const config = await loadConfig(configPath);
-		if (!config.databases) {
-			config.databases = [];
-		}
-		if (!config.databases.includes(newDatabaseId)) {
-			config.databases.push(newDatabaseId);
-			await writeConfigFile({ configPath, config, isTS });
-			return true;
-		}
-		return false;
+		process.exit(1);
 	}
 }
 
@@ -290,156 +135,25 @@ export async function syncAgentsInConfigWithAST(
 ): Promise<boolean> {
 	try {
 		const originalContent = fs.readFileSync(configPath, "utf-8");
-
-		const ast = parser.parse(originalContent, {
-			sourceType: "module",
-			allowImportExportEverywhere: true,
-			plugins: isTS ? ["typescript"] : [],
+		const output = updateConfigListInConfigModule({
+			sourceCode: originalContent,
+			isTS,
+			key: "agents",
+			items: agents.map((agent) => ({
+				value: agent.id.replace(/-/g, ""),
+				comment: agent.name,
+			})),
+			strategy: "replaceAll",
 		});
-
-		let modified = false;
-
-		// Normalize agent IDs (remove dashes) for comparison
-		const normalizedAgentIds = new Set(
-			agents.map((a) => a.id.replace(/-/g, "")),
-		);
-
-		function modifyAgentsInObject(objExpression: any): void {
-			if (!objExpression || !objExpression.properties) return;
-
-			// Find the agents property
-			let agentsProp: any = null;
-			for (const prop of objExpression.properties) {
-				if (
-					t.isObjectProperty(prop) &&
-					t.isIdentifier(prop.key) &&
-					prop.key.name === "agents"
-				) {
-					agentsProp = prop;
-					break;
-				}
-			}
-
-			// Create agents array if it doesn't exist
-			if (!agentsProp) {
-				const newElements = agents.map((agent) => {
-					const normalizedId = agent.id.replace(/-/g, "");
-					const stringLiteral = t.stringLiteral(normalizedId);
-					t.addComment(stringLiteral, "trailing", ` ${agent.name} `, false);
-					return stringLiteral;
-				});
-
-				const agentsArray = t.arrayExpression(newElements);
-				const newAgentsProp = t.objectProperty(
-					t.identifier("agents"),
-					agentsArray,
-				);
-				objExpression.properties.push(newAgentsProp);
-				modified = true;
-				return;
-			}
-
-			// Update existing agents array
-			if (t.isArrayExpression(agentsProp.value)) {
-				// Extract existing agent IDs from config
-				const existingElements = agentsProp.value.elements.filter((el: any) =>
-					t.isStringLiteral(el),
-				);
-				const existingIds = existingElements.map((el: any) => el.value);
-
-				// Check if we need to update
-				const existingIdsSet = new Set(existingIds);
-				const needsUpdate =
-					agents.length !== existingIds.length ||
-					agents.some((a) => !existingIdsSet.has(a.id.replace(/-/g, ""))) ||
-					existingIds.some((id: string) => !normalizedAgentIds.has(id));
-
-				if (needsUpdate) {
-					// Replace entire array with new agents
-					const newElements = agents.map((agent) => {
-						const normalizedId = agent.id.replace(/-/g, "");
-						const stringLiteral = t.stringLiteral(normalizedId);
-						t.addComment(stringLiteral, "trailing", ` ${agent.name} `, false);
-						return stringLiteral;
-					});
-
-					agentsProp.value.elements = newElements;
-					modified = true;
-				}
-			}
+		if (!output.modified) {
+			return false;
 		}
-
-		function visitNode(node: any): void {
-			if (t.isVariableDeclarator(node) && t.isIdentifier(node.id)) {
-				let objectExpr = node.init as any;
-				if (objectExpr && t.isTSSatisfiesExpression(objectExpr)) {
-					objectExpr = objectExpr.expression;
-				}
-				if (t.isObjectExpression(objectExpr)) {
-					modifyAgentsInObject(objectExpr);
-				}
-			} else if (
-				t.isAssignmentExpression(node) &&
-				t.isMemberExpression(node.left) &&
-				t.isIdentifier(node.left.property) &&
-				node.left.property.name === "exports"
-			) {
-				let objectExpr = node.right as any;
-				if (objectExpr && t.isTSSatisfiesExpression(objectExpr)) {
-					objectExpr = objectExpr.expression;
-				}
-				if (t.isObjectExpression(objectExpr)) {
-					modifyAgentsInObject(objectExpr);
-				}
-			} else if (t.isExportDefaultDeclaration(node)) {
-				let objectExpr = node.declaration as any;
-				if (objectExpr && t.isTSSatisfiesExpression(objectExpr)) {
-					objectExpr = objectExpr.expression;
-				}
-				if (t.isObjectExpression(objectExpr)) {
-					modifyAgentsInObject(objectExpr);
-				}
-			}
-		}
-
-		function traverse(node: any): void {
-			if (!node || typeof node !== "object") return;
-
-			visitNode(node);
-
-			for (const key in node) {
-				if (node[key] && typeof node[key] === "object") {
-					if (Array.isArray(node[key])) {
-						node[key].forEach(traverse);
-					} else {
-						traverse(node[key]);
-					}
-				}
-			}
-		}
-
-		traverse(ast);
-
-		if (modified) {
-			const output = generate(ast, {
-				retainLines: true,
-				concise: false,
-			});
-
-			fs.writeFileSync(configPath, output.code);
-			return true;
-		}
-
-		return false;
+		fs.writeFileSync(configPath, output.code);
+		return true;
 	} catch (error: unknown) {
 		console.error("❌ Error updating config file with AST:");
 		console.error(error);
-		console.log("⚠️  Falling back to simple JSON replacement...");
-
-		const config = await loadConfig(configPath);
-		config.agents = agents.map((a) => a.id.replace(/-/g, ""));
-		await writeConfigFile({ configPath, config, isTS });
-		return true;
+		process.exit(1);
 	}
 }
 

@@ -6,53 +6,43 @@
 import { Client } from "@notionhq/client";
 import fs from "fs";
 import path from "path";
-import * as ts from "typescript";
 import { getNotionConfig } from "../../config/loadConfig";
 import {
-	AGENTS_DIR,
+	type CachedEntityMetadata,
+	readAgentMetadataFromDisk,
+	readDatabaseMetadata,
+} from "../shared/cached-metadata";
+import {
 	AST_FS_PATHS,
-	AST_IMPORT_PATHS,
 	AST_RUNTIME_CONSTANTS,
 	DATABASES_DIR,
 } from "../shared/constants";
+import { updateSourceIndexFile } from "../shared/emit/orm-index-emitter";
+import { emitRegistryModuleArtifacts } from "../shared/emit/registry-emitter";
 import { createTypescriptFileForDatabase } from "./database-file-writer";
 
-function getMetadataFilePath(): string {
-	return AST_FS_PATHS.metadataFile;
-}
-
-export function readDatabaseMetadata(): CachedDatabaseMetadata[] {
-	try {
-		const metadataFile = getMetadataFilePath();
-		if (!fs.existsSync(metadataFile)) {
-			return [];
-		}
-		const content = fs.readFileSync(metadataFile, "utf-8");
-		return JSON.parse(content) as CachedDatabaseMetadata[];
-	} catch {
-		return [];
-	}
-}
-
-function writeDatabaseMetadata(metadata: CachedDatabaseMetadata[]): void {
+/**
+ * Persists database metadata snapshot after generation completes.
+ */
+function writeDatabaseMetadata(metadata: CachedEntityMetadata[]): void {
 	if (!fs.existsSync(DATABASES_DIR)) {
 		fs.mkdirSync(DATABASES_DIR, { recursive: true });
 	}
-	const metadataFile = getMetadataFilePath();
-	fs.writeFileSync(metadataFile, JSON.stringify(metadata, null, 2));
-}
-
-interface CachedDatabaseMetadata {
-	id: string;
-	className: string;
-	displayName: string;
-	camelCaseName: string;
+	fs.writeFileSync(
+		AST_FS_PATHS.metadataFile,
+		JSON.stringify(metadata, null, 2),
+	);
 }
 
 type CreateDatabaseTypesOptions =
 	| { type: "all" }
 	| { type: "incremental"; id: string };
 
+/**
+ * Main database generation entrypoint used by CLI commands.
+ * Flow: resolve target IDs -> generate db files -> write metadata -> emit
+ * database registry + root NotionORM index artifacts.
+ */
 export const createDatabaseTypes = async (
 	options: CreateDatabaseTypesOptions,
 ): Promise<{ databaseNames: string[] }> => {
@@ -74,7 +64,7 @@ export const createDatabaseTypes = async (
 	const targetIds = isFullGenerate ? config.databases : [options.id];
 
 	// Prepare for full or incremental generation
-	let metadataMap: Map<string, CachedDatabaseMetadata>;
+	let metadataMap: Map<string, CachedEntityMetadata>;
 
 	if (isFullGenerate) {
 		if (fs.existsSync(DATABASES_DIR)) {
@@ -101,7 +91,9 @@ export const createDatabaseTypes = async (
 	}
 
 	if (targetIds.length === 0) {
-		console.log("⚠️  No database IDs found in config. Skipping database generation.");
+		console.log(
+			"⚠️  No database IDs found in config. Skipping database generation.",
+		);
 		writeDatabaseMetadata([]);
 		createDatabaseBarrelFile({ databaseInfo: [] });
 		const agentsMetadata = readAgentMetadataFromDisk();
@@ -130,7 +122,7 @@ export const createDatabaseTypes = async (
 	// Update barrel file and source index
 	createDatabaseBarrelFile({
 		databaseInfo: databasesMetadata.map((db) => ({
-			className: db.className,
+			name: db.name,
 			displayName: db.displayName,
 		})),
 	});
@@ -141,351 +133,70 @@ export const createDatabaseTypes = async (
 	return { databaseNames };
 };
 
-// Creates file that exports all generated databases in a registry format
+/**
+ * Emits `db/index.ts|js` registry used by generated NotionORM constructor.
+ */
 function createDatabaseBarrelFile(args: {
-	databaseInfo: Array<{ className: string; displayName: string }>;
+	databaseInfo: Array<{ name: string; displayName: string }>;
 }) {
 	const { databaseInfo } = args;
 
-	// Create import statements for each database
-	const importStatements = databaseInfo.map(({ className }) =>
-		ts.factory.createImportDeclaration(
-			undefined,
-			ts.factory.createImportClause(
-				false,
-				undefined,
-				ts.factory.createNamedImports([
-					ts.factory.createImportSpecifier(
-						false,
-						undefined,
-						ts.factory.createIdentifier(className),
-					),
-				]),
-			),
-			ts.factory.createStringLiteral(`./${className}`),
-			undefined,
-		),
-	);
-
-	const registryProperties = databaseInfo.map(({ className }) =>
-		ts.factory.createPropertyAssignment(
-			ts.factory.createIdentifier(className),
-			ts.factory.createIdentifier(className),
-		),
-	);
-
-	const registryExport = ts.factory.createVariableStatement(
-		[ts.factory.createModifier(ts.SyntaxKind.ExportKeyword)],
-		ts.factory.createVariableDeclarationList(
-			[
-				ts.factory.createVariableDeclaration(
-					ts.factory.createIdentifier("databases"),
-					undefined,
-					undefined,
-					ts.factory.createObjectLiteralExpression(registryProperties, true),
-				),
-			],
-			ts.NodeFlags.Const,
-		),
-	);
-
-	const allNodes = ts.factory.createNodeArray([
-		...importStatements,
-		registryExport,
-	]);
-
-	const sourceFile = ts.createSourceFile(
-		"placeholder.ts",
-		"",
-		ts.ScriptTarget.ESNext,
-		true,
-		ts.ScriptKind.TS,
-	);
-	const printer = ts.createPrinter();
-
-	const typescriptCodeToString = printer.printList(
-		ts.ListFormat.MultiLine,
-		allNodes,
-		sourceFile,
-	);
-
-	const transpileToJavaScript = ts.transpile(typescriptCodeToString, {
-		module: ts.ModuleKind.ES2020,
-		target: ts.ScriptTarget.ES2020,
+	emitRegistryModuleArtifacts({
+		registryName: "databases",
+		entries: databaseInfo.map(({ name }) => ({
+			importName: name,
+			importPath: `./${name}`,
+		})),
+		tsPath: AST_FS_PATHS.databaseBarrelTs,
+		jsPath: AST_FS_PATHS.databaseBarrelJs,
 	});
-
-	if (!fs.existsSync(DATABASES_DIR)) {
-		fs.mkdirSync(DATABASES_DIR, { recursive: true });
-	}
-
-	fs.writeFileSync(AST_FS_PATHS.databaseBarrelTs, typescriptCodeToString);
-	fs.writeFileSync(AST_FS_PATHS.databaseBarrelJs, transpileToJavaScript);
 }
-
-export interface CachedAgentMetadata {
-		id: string;
-		className: string;
-		displayName: string;
-		camelCaseName: string;
-	}
-
-export function readAgentMetadataFromDisk(): CachedAgentMetadata[] {
-	try {
-		const metadataFile = path.resolve(AGENTS_DIR, "metadata.json");
-		if (!fs.existsSync(metadataFile)) {
-			return [];
-		}
-		const content = fs.readFileSync(metadataFile, "utf-8");
-		return JSON.parse(content) as CachedAgentMetadata[];
-	} catch {
-		return [];
-	}
-}
-
-export function updateSourceIndexFile(
-		databasesMetadata: CachedDatabaseMetadata[],
-		agentsMetadata: CachedAgentMetadata[],
-	): void {
-		if (databasesMetadata.length === 0 && agentsMetadata.length === 0) {
-			createEmptySourceIndexFile();
-			return;
-		}
-
-		const databaseImports = databasesMetadata
-			.map(
-				(db) =>
-					`import { ${db.camelCaseName} } from "${AST_IMPORT_PATHS.databaseClass(
-						db.className,
-					)}";`,
-			)
-			.join("\n");
-
-		const agentImports = agentsMetadata
-			.map(
-				(agent) =>
-					`import { ${agent.camelCaseName} } from "${AST_IMPORT_PATHS.agentClass(
-						agent.className,
-					)}";`,
-			)
-			.join("\n");
-
-		const imports = [databaseImports, agentImports].filter(Boolean).join("\n");
-
-		const databasesTypeProps =
-			databasesMetadata.length > 0
-				? databasesMetadata
-						.map(
-							(db) =>
-								`        ${db.camelCaseName}: ReturnType<typeof ${db.camelCaseName}>;`,
-						)
-						.join("\n")
-				: "";
-
-		const agentsTypeProps =
-			agentsMetadata.length > 0
-				? agentsMetadata
-						.map(
-							(agent) =>
-								`        ${agent.camelCaseName}: ReturnType<typeof ${agent.camelCaseName}>;`,
-						)
-						.join("\n")
-				: "";
-
-		const databasesInitCode =
-			databasesMetadata.length > 0
-				? databasesMetadata
-						.map(
-							(db) =>
-								`            ${db.camelCaseName}: ${db.camelCaseName}(config.auth),`,
-						)
-						.join("\n")
-				: "";
-
-		const agentsInitCode =
-			agentsMetadata.length > 0
-				? agentsMetadata
-						.map(
-							(agent) =>
-								`            ${agent.camelCaseName}: ${agent.camelCaseName}(config.auth),`,
-						)
-						.join("\n")
-				: "";
-
-		const notionORMClass = `
-import NotionORMBase, { AgentClient, DatabaseClient } from "./base";
-export type { NotionConfigType, Query } from "./base";
-export { AgentClient, DatabaseClient };
 
 /**
- * Extended NotionORM class with generated database and agent implementations
- * This class extends the base NotionORM and adds the generated databases and agents properties.
+ * Normalizes metadata shape used across registry and index emitters.
  */
-class NotionORM extends NotionORMBase {
-    public databases: {
-${databasesTypeProps || "        // No databases configured"}
-    };
-    public agents: {
-${agentsTypeProps || "        // No agents configured"}
-    };
-
-    constructor(config: { auth: string }) {
-        super(config);
-        this.databases = {
-${databasesInitCode || ""}
-        };
-        this.agents = {
-${agentsInitCode || ""}
-        };
-    }
-}
-
-export default NotionORM;
-`;
-
-		const completeCode = `${imports}\n${notionORMClass}`;
-
-		writeIndexFiles(completeCode, databasesMetadata, agentsMetadata);
-	}
-
-function writeIndexFiles(
-	typescriptCode: string,
-	databasesMetadata: CachedDatabaseMetadata[],
-	agentsMetadata: CachedAgentMetadata[],
-): void {
-	if (!fs.existsSync(AST_FS_PATHS.BUILD_SRC_DIR)) {
-		fs.mkdirSync(AST_FS_PATHS.BUILD_SRC_DIR, { recursive: true });
-	}
-
-	const compiledJS = ts.transpile(typescriptCode, {
-		module: ts.ModuleKind.ES2020,
-		target: ts.ScriptTarget.ES2020,
-		esModuleInterop: true,
-		allowSyntheticDefaultImports: true,
-	});
-
-	fs.writeFileSync(AST_FS_PATHS.buildIndexJs, compiledJS);
-
-	const declarationCode = generateDeclarationFile(
-		databasesMetadata,
-		agentsMetadata,
-	);
-	fs.writeFileSync(AST_FS_PATHS.buildIndexDts, declarationCode);
-
-	if (fs.existsSync(AST_FS_PATHS.buildIndexDtsMap)) {
-		fs.unlinkSync(AST_FS_PATHS.buildIndexDtsMap);
-	}
-}
-
-function generateDeclarationFile(
-	databasesMetadata: CachedDatabaseMetadata[],
-	agentsMetadata: CachedAgentMetadata[],
-): string {
-	if (databasesMetadata.length === 0 && agentsMetadata.length === 0) {
-		return `export default class NotionORM {
-    constructor(config: { auth: string });
-}`;
-	}
-
-	const databasesProperties = databasesMetadata
-		.map(
-			(db) =>
-				`        ${
-					db.camelCaseName
-				}: ReturnType<typeof import("${AST_IMPORT_PATHS.databaseClass(
-					db.className,
-				)}").${db.camelCaseName}>;`,
-		)
-		.join("\n");
-
-	const agentsProperties = agentsMetadata
-		.map(
-			(agent) =>
-				`        ${
-					agent.camelCaseName
-				}: ReturnType<typeof import("${AST_IMPORT_PATHS.agentClass(
-					agent.className,
-				)}").${agent.camelCaseName}>;`,
-		)
-		.join("\n");
-
-	return `
-import NotionORMBase, { AgentClient, DatabaseClient } from "./base";
-export type { NotionConfigType, Query } from "./base";
-export { AgentClient, DatabaseClient };
-
-export default class NotionORM extends NotionORMBase {
-    public databases: {
-${databasesProperties || "        // No databases configured"}
-    };
-    public agents: {
-${agentsProperties || "        // No agents configured"}
-    };
-    constructor(config: { auth: string });
-}`;
-}
-
-function createEmptySourceIndexFile(): void {
-	const emptyClass = `
-import NotionORMBase, { AgentClient, DatabaseClient } from "./base";
-export type { NotionConfigType, Query } from "./base";
-export { AgentClient, DatabaseClient };
-
-/**
- * Extended NotionORM class - no databases configured
- */
-class NotionORM extends NotionORMBase {
-    public databases: {} = {};
-    public agents: {} = {};
-
-    constructor(config: { auth: string }) {
-        super(config);
-        console.warn("⚠️  No databases found. Please run '${AST_RUNTIME_CONSTANTS.CLI_GENERATE_COMMAND}' to generate database types.");
-    }
-}
-
-export default NotionORM;
-`;
-
-	const completeCode = `${emptyClass}`;
-	writeIndexFiles(completeCode, [], []);
-}
-
 function createMetadata(
 	id: string,
-	className: string,
+	name: string,
 	displayName: string,
-): CachedDatabaseMetadata {
+): CachedEntityMetadata {
 	return {
 		id,
-		className,
+		name,
 		displayName,
-		camelCaseName: className.charAt(0).toLowerCase() + className.slice(1),
 	};
 }
 
+/**
+ * Generates one database module and returns metadata for cache/index emission.
+ */
 async function generateDatabaseTypes(
 	client: Client,
 	databaseId: string,
-): Promise<CachedDatabaseMetadata> {
+): Promise<CachedEntityMetadata> {
 	const databaseObject = await client.dataSources.retrieve({
 		data_source_id: databaseId,
 	});
 
 	const {
-		databaseClassName,
+		databaseModuleName,
 		databaseName,
 		databaseId: id,
 	} = await createTypescriptFileForDatabase(databaseObject);
 
-	const databaseMetaData = createMetadata(id, databaseClassName, databaseName);
+	const databaseMetaData = createMetadata(id, databaseModuleName, databaseName);
 	return databaseMetaData;
 }
 
+/**
+ * For incremental runs, keep only cached entries that still exist in config.
+ * This avoids emitting stale database references in generated indexes.
+ */
 function prepareIncrementalMetadata(
 	configDatabaseIds: string[],
-): Map<string, CachedDatabaseMetadata> {
+): Map<string, CachedEntityMetadata> {
 	const cachedDatabaseMetadata = readDatabaseMetadata();
-	const metadataMap = new Map<string, CachedDatabaseMetadata>();
+	const metadataMap = new Map<string, CachedEntityMetadata>();
 
 	const configIdsSet = new Set(configDatabaseIds);
 	for (const dbMetadata of cachedDatabaseMetadata) {

@@ -7,48 +7,30 @@ import { NotionAgentsClient } from "@notionhq/agents-client";
 import fs from "fs";
 import path from "path";
 import * as ts from "typescript";
+import { z } from "zod";
 import { syncAgentsInConfigWithAST } from "../../cli/helpers";
+import type { AgentIcon } from "../../client/AgentClient";
 import { findConfigFile } from "../../config/helpers";
 import { getNotionConfig } from "../../config/loadConfig";
 import { camelize } from "../../helpers";
-import {
-	type CachedAgentMetadata as DatabaseCachedAgentMetadata,
-	readAgentMetadataFromDisk,
-	readDatabaseMetadata,
-	updateSourceIndexFile,
-} from "../database/generate-databases-cli";
 import { createNameImport } from "../shared/ast-builders";
 import {
-	AGENTS_DIR,
-	AST_FS_FILENAMES,
-	AST_FS_PATHS,
-	AST_IMPORT_PATHS,
-} from "../shared/constants";
+	type CachedEntityMetadata,
+	readDatabaseMetadata,
+} from "../shared/cached-metadata";
+import { AGENTS_DIR, AST_IMPORT_PATHS } from "../shared/constants";
+import { emitValueAsExpression } from "../shared/emit/emit-value-as-expression";
+import { updateSourceIndexFile } from "../shared/emit/orm-index-emitter";
+import { emitRegistryModuleArtifacts } from "../shared/emit/registry-emitter";
+import { emitTsAndJsArtifacts } from "../shared/emit/ts-emit-core";
+import { TS_EMIT_OPTIONS_GENERATED } from "../shared/emit/ts-emit-options";
 
 /**
  * Returns the file path where agent metadata is stored.
- * Metadata contains cached information about generated agents (id, className, displayName).
+ * Metadata contains cached information about generated agents (id, name, displayName).
  */
 function getAgentsMetadataFilePath(): string {
 	return path.resolve(AGENTS_DIR, "metadata.json");
-}
-
-/**
- * Reads cached agent metadata from disk.
- * Returns an empty array if the metadata file doesn't exist or can't be parsed.
- * Used to preserve existing agent metadata during generation.
- */
-function readAgentMetadata(): CachedAgentMetadata[] {
-	try {
-		const metadataFile = getAgentsMetadataFilePath();
-		if (!fs.existsSync(metadataFile)) {
-			return [];
-		}
-		const content = fs.readFileSync(metadataFile, "utf-8");
-		return JSON.parse(content) as CachedAgentMetadata[];
-	} catch (error) {
-		return [];
-	}
 }
 
 /**
@@ -64,7 +46,7 @@ function writeAgentMetadata(metadata: CachedAgentMetadata[]): void {
 	fs.writeFileSync(metadataFile, JSON.stringify(metadata, null, 2));
 }
 
-type CachedAgentMetadata = DatabaseCachedAgentMetadata;
+type CachedAgentMetadata = CachedEntityMetadata;
 
 /**
  * Main entry point for generating agent TypeScript files.
@@ -122,7 +104,7 @@ export const createAgentTypes = async (): Promise<{ agentNames: string[] }> => {
 			const agentMetaData = await generateAgentTypes(
 				normalizedIdForStorage,
 				agent.name,
-				agent.icon ?? null,
+				parseAgentIcon(agent.icon),
 			);
 			metadataMap.set(agentMetaData.id, agentMetaData);
 			agentNames.push(agentMetaData.displayName);
@@ -137,7 +119,7 @@ export const createAgentTypes = async (): Promise<{ agentNames: string[] }> => {
 
 	createAgentBarrelFile({
 		agentInfo: agentsMetadata.map((agent) => ({
-			className: agent.className,
+			name: agent.name,
 			displayName: agent.displayName,
 		})),
 	});
@@ -149,120 +131,40 @@ export const createAgentTypes = async (): Promise<{ agentNames: string[] }> => {
 };
 
 /**
- * Creates a barrel file (index.ts/js) that exports all generated agent classes.
+ * Creates a barrel file (index.ts/js) that exports all generated agent factories.
  *
  * The barrel file contains:
- * - Import statements for each agent class
- * - An exported "agents" object mapping class names to their implementations
+ * - Import statements for each generated agent module
+ * - An exported "agents" object mapping generated names to their implementations
  *
  * This allows consumers to access agents via: `import { agents } from './agents'`
  *
  * Example generated barrel file (index.ts):
  * ```ts
- * import { FoodManager } from "./FoodManager";
- * import { BookAssistant } from "./BookAssistant";
+ * import { foodManager } from "./foodManager";
+ * import { bookAssistant } from "./bookAssistant";
  * export const agents = {
- *   FoodManager: FoodManager,
- *   BookAssistant: BookAssistant,
+ *   foodManager: foodManager,
+ *   bookAssistant: bookAssistant,
  * };
  * ```
  *
- * @param args - Object containing agent info (className and displayName for each agent)
+ * @param args - Object containing agent info (name and displayName for each agent)
  */
 function createAgentBarrelFile(args: {
-	agentInfo: Array<{ className: string; displayName: string }>;
+	agentInfo: Array<{ name: string; displayName: string }>;
 }) {
 	const { agentInfo } = args;
 
-	if (agentInfo.length === 0) {
-		return;
-	}
-
-	// Creates import statements for each agent class
-	// Example generated: import { FoodManager } from "./FoodManager";
-	const importStatements = agentInfo.map(({ className }) =>
-		ts.factory.createImportDeclaration(
-			undefined,
-			// Creates: { FoodManager }
-			ts.factory.createImportClause(
-				false,
-				undefined,
-				// Creates: FoodManager (as a named import)
-				ts.factory.createNamedImports([
-					ts.factory.createImportSpecifier(
-						false,
-						undefined,
-						ts.factory.createIdentifier(className),
-					),
-				]),
-			),
-			ts.factory.createStringLiteral(`./${className}`),
-			undefined,
-		),
-	);
-
-	// Creates property assignments for the agents object
-	// Example generated: FoodManager: FoodManager
-	const registryProperties = agentInfo.map(({ className }) =>
-		ts.factory.createPropertyAssignment(
-			// Creates: FoodManager (property name)
-			ts.factory.createIdentifier(className),
-			// Creates: FoodManager (property value - references the imported class)
-			ts.factory.createIdentifier(className),
-		),
-	);
-
-	// Creates the exported agents object
-	// Example generated: export const agents = { FoodManager: FoodManager, ... };
-	const registryExport = ts.factory.createVariableStatement(
-		[ts.factory.createModifier(ts.SyntaxKind.ExportKeyword)],
-		ts.factory.createVariableDeclarationList(
-			[
-				ts.factory.createVariableDeclaration(
-					ts.factory.createIdentifier("agents"),
-					undefined,
-					undefined,
-					// Creates: { FoodManager: FoodManager, ... } (object literal)
-					ts.factory.createObjectLiteralExpression(registryProperties, true),
-				),
-			],
-			ts.NodeFlags.Const,
-		),
-	);
-
-	const allNodes = ts.factory.createNodeArray([
-		...importStatements,
-		registryExport,
-	]);
-
-	const sourceFile = ts.createSourceFile(
-		"placeholder.ts",
-		"",
-		ts.ScriptTarget.ESNext,
-		true,
-		ts.ScriptKind.TS,
-	);
-	const printer = ts.createPrinter();
-
-	const typescriptCodeToString = printer.printList(
-		ts.ListFormat.MultiLine,
-		allNodes,
-		sourceFile,
-	);
-
-	const transpileToJavaScript = ts.transpile(typescriptCodeToString, {
-		module: ts.ModuleKind.ES2020,
-		target: ts.ScriptTarget.ES2020,
+	emitRegistryModuleArtifacts({
+		registryName: "agents",
+		entries: agentInfo.map(({ name }) => ({
+			importName: name,
+			importPath: `./${name}`,
+		})),
+		tsPath: path.resolve(AGENTS_DIR, "index.ts"),
+		jsPath: path.resolve(AGENTS_DIR, "index.js"),
 	});
-
-	if (!fs.existsSync(AGENTS_DIR)) {
-		fs.mkdirSync(AGENTS_DIR, { recursive: true });
-	}
-
-	const agentsBarrelTs = path.resolve(AGENTS_DIR, "index.ts");
-	const agentsBarrelJs = path.resolve(AGENTS_DIR, "index.js");
-	fs.writeFileSync(agentsBarrelTs, typescriptCodeToString);
-	fs.writeFileSync(agentsBarrelJs, transpileToJavaScript);
 }
 
 /**
@@ -270,35 +172,82 @@ function createAgentBarrelFile(args: {
  *
  * Metadata is used to track agent information across generation cycles:
  * - id: Normalized agent ID (without dashes)
- * - className: CamelCase class name (e.g., "FoodManager")
+ * - name: Generated identifier/file name (e.g., "foodManager")
  * - displayName: Human-readable agent name
- * - camelCaseName: Lowercase first letter version (e.g., "foodManager")
  *
  * @param id - Normalized agent ID
- * @param className - CamelCase class name
+ * @param name - Generated identifier/file name
  * @param displayName - Human-readable display name
  * @returns CachedAgentMetadata object
  */
 function createMetadata(
 	id: string,
-	className: string,
+	name: string,
 	displayName: string,
 ): CachedAgentMetadata {
 	return {
 		id,
-		className,
+		name,
 		displayName,
-		camelCaseName: className.charAt(0).toLowerCase() + className.slice(1),
 	};
+}
+
+/**
+ * Runtime trust boundary for icon payloads returned by Notion Agents API.
+ * Parsing here preserves literal discriminants used by generated AST output.
+ */
+const agentIconSchema: z.ZodType<AgentIcon> = z.union([
+	z.object({
+		type: z.literal("emoji"),
+		emoji: z.string(),
+	}),
+	z.object({
+		type: z.literal("file"),
+		file: z.object({
+			url: z.string(),
+			expiry_time: z.string(),
+		}),
+	}),
+	z.object({
+		type: z.literal("external"),
+		external: z.object({
+			url: z.string(),
+		}),
+	}),
+	z.object({
+		type: z.literal("custom_emoji"),
+		custom_emoji: z.object({
+			id: z.string(),
+			name: z.string(),
+			url: z.string(),
+		}),
+	}),
+	z.object({
+		type: z.literal("custom_agent_avatar"),
+		custom_agent_avatar: z.object({
+			static_url: z.string(),
+			animated_url: z.string(),
+		}),
+	}),
+	z.null(),
+]);
+
+/**
+ * Converts unknown icon payloads to canonical `AgentIcon`; falls back to null
+ * for unsupported or malformed data to keep generation resilient.
+ */
+function parseAgentIcon(input: unknown): AgentIcon {
+	const parseResult = agentIconSchema.safeParse(input);
+	return parseResult.success ? parseResult.data : null;
 }
 
 /**
  * Generates TypeScript files for a single agent and returns its metadata.
  *
  * This function:
- * 1. Converts the agent name to a camelCase className
+ * 1. Converts the agent name to a generated identifier
  * 2. Creates the TypeScript/JavaScript files for the agent
- * 3. Returns metadata for tracking purposes
+ * 3. Returns metadata used by source index emission
  *
  * @param agentId - Normalized agent ID (without dashes)
  * @param agentName - Human-readable agent name from Notion
@@ -308,21 +257,21 @@ function createMetadata(
 async function generateAgentTypes(
 	agentId: string,
 	agentName: string,
-	agentIcon: { type: string; [key: string]: unknown } | null,
+	agentIcon: AgentIcon,
 ): Promise<CachedAgentMetadata> {
-	const agentClassName = camelize(agentName);
+	const agentModuleName = camelize(agentName);
 	const agentDisplayName = agentName;
 
 	await createTypescriptFileForAgent(
 		agentId,
 		agentName,
-		agentClassName,
+		agentModuleName,
 		agentIcon,
 	);
 
 	const agentMetaData = createMetadata(
 		agentId,
-		agentClassName,
+		agentModuleName,
 		agentDisplayName,
 	);
 	return agentMetaData;
@@ -332,6 +281,7 @@ async function generateAgentTypes(
  * Creates the actual TypeScript and JavaScript files for an agent.
  *
  * Generates a file that exports a factory function which creates an AgentClient instance.
+ * These factories are later wired into the generated root NotionORM class.
  * The generated file structure:
  * - Imports AgentClient from the package
  * - Defines constants for agent id, name, and icon
@@ -343,19 +293,19 @@ async function generateAgentTypes(
  * const id = "agent-id-here";
  * const name = "Agent Name";
  * const icon = { type: "emoji", emoji: "🤖" };
- * export const FoodManager = (auth: string) => new AgentClient({ auth, id, name, icon });
+ * export const foodManager = (auth: string) => new AgentClient({ auth, id, name, icon });
  * ```
  *
  * @param agentId - Normalized agent ID (without dashes)
  * @param agentName - Human-readable agent name
- * @param agentClassName - CamelCase class name (e.g., "FoodManager")
+ * @param agentModuleName - Generated identifier/file name (e.g., "foodManager")
  * @param agentIcon - Icon data from Notion API (can be null)
  */
 async function createTypescriptFileForAgent(
 	agentId: string,
 	agentName: string,
-	agentClassName: string,
-	agentIcon: { type: string; [key: string]: unknown } | null,
+	agentModuleName: string,
+	agentIcon: AgentIcon,
 ) {
 	// Creates: import { AgentClient } from "@haustle/notion-orm/build/src/client/AgentClient";
 	const agentClientImport = createNameImport({
@@ -396,161 +346,7 @@ async function createTypescriptFileForAgent(
 	);
 
 	// Creates: const icon = { type: "emoji", emoji: "🤖" } | null;
-	const iconValue = agentIcon
-		? (() => {
-				switch (agentIcon.type) {
-					case "emoji":
-						return ts.factory.createObjectLiteralExpression(
-							[
-								ts.factory.createPropertyAssignment(
-									ts.factory.createIdentifier("type"),
-									ts.factory.createStringLiteral("emoji"),
-								),
-								ts.factory.createPropertyAssignment(
-									ts.factory.createIdentifier("emoji"),
-									ts.factory.createStringLiteral(
-										(agentIcon.emoji as string) ?? "",
-									),
-								),
-							],
-							false,
-						);
-					case "file":
-						return ts.factory.createObjectLiteralExpression(
-							[
-								ts.factory.createPropertyAssignment(
-									ts.factory.createIdentifier("type"),
-									ts.factory.createStringLiteral("file"),
-								),
-								ts.factory.createPropertyAssignment(
-									ts.factory.createIdentifier("file"),
-									ts.factory.createObjectLiteralExpression(
-										[
-											ts.factory.createPropertyAssignment(
-												ts.factory.createIdentifier("url"),
-												ts.factory.createStringLiteral(
-													(agentIcon.file as { url: string })?.url ?? "",
-												),
-											),
-											ts.factory.createPropertyAssignment(
-												ts.factory.createIdentifier("expiry_time"),
-												ts.factory.createStringLiteral(
-													(agentIcon.file as { expiry_time: string })
-														?.expiry_time ?? "",
-												),
-											),
-										],
-										false,
-									),
-								),
-							],
-							false,
-						);
-					case "external":
-						return ts.factory.createObjectLiteralExpression(
-							[
-								ts.factory.createPropertyAssignment(
-									ts.factory.createIdentifier("type"),
-									ts.factory.createStringLiteral("external"),
-								),
-								ts.factory.createPropertyAssignment(
-									ts.factory.createIdentifier("external"),
-									ts.factory.createObjectLiteralExpression(
-										[
-											ts.factory.createPropertyAssignment(
-												ts.factory.createIdentifier("url"),
-												ts.factory.createStringLiteral(
-													(agentIcon.external as { url: string })?.url ?? "",
-												),
-											),
-										],
-										false,
-									),
-								),
-							],
-							false,
-						);
-					case "custom_emoji":
-						return ts.factory.createObjectLiteralExpression(
-							[
-								ts.factory.createPropertyAssignment(
-									ts.factory.createIdentifier("type"),
-									ts.factory.createStringLiteral("custom_emoji"),
-								),
-								ts.factory.createPropertyAssignment(
-									ts.factory.createIdentifier("custom_emoji"),
-									ts.factory.createObjectLiteralExpression(
-										[
-											ts.factory.createPropertyAssignment(
-												ts.factory.createIdentifier("id"),
-												ts.factory.createStringLiteral(
-													(agentIcon.custom_emoji as { id: string })?.id ?? "",
-												),
-											),
-											ts.factory.createPropertyAssignment(
-												ts.factory.createIdentifier("name"),
-												ts.factory.createStringLiteral(
-													(agentIcon.custom_emoji as { name: string })?.name ??
-														"",
-												),
-											),
-											ts.factory.createPropertyAssignment(
-												ts.factory.createIdentifier("url"),
-												ts.factory.createStringLiteral(
-													(agentIcon.custom_emoji as { url: string })?.url ??
-														"",
-												),
-											),
-										],
-										false,
-									),
-								),
-							],
-							false,
-						);
-					case "custom_agent_avatar":
-						return ts.factory.createObjectLiteralExpression(
-							[
-								ts.factory.createPropertyAssignment(
-									ts.factory.createIdentifier("type"),
-									ts.factory.createStringLiteral("custom_agent_avatar"),
-								),
-								ts.factory.createPropertyAssignment(
-									ts.factory.createIdentifier("custom_agent_avatar"),
-									ts.factory.createObjectLiteralExpression(
-										[
-											ts.factory.createPropertyAssignment(
-												ts.factory.createIdentifier("static_url"),
-												ts.factory.createStringLiteral(
-													(
-														agentIcon.custom_agent_avatar as {
-															static_url: string;
-														}
-													)?.static_url ?? "",
-												),
-											),
-											ts.factory.createPropertyAssignment(
-												ts.factory.createIdentifier("animated_url"),
-												ts.factory.createStringLiteral(
-													(
-														agentIcon.custom_agent_avatar as {
-															animated_url: string;
-														}
-													)?.animated_url ?? "",
-												),
-											),
-										],
-										false,
-									),
-								),
-							],
-							false,
-						);
-					default:
-						return ts.factory.createNull();
-				}
-			})()
-		: ts.factory.createNull();
+	const iconValue = emitValueAsExpression(agentIcon);
 
 	const iconVariable = ts.factory.createVariableStatement(
 		undefined,
@@ -567,14 +363,14 @@ async function createTypescriptFileForAgent(
 		),
 	);
 
-	// Creates: export const FoodManager = (auth: string) => new AgentClient({ auth, id, name, icon });
+	// Creates: export const foodManager = (auth: string) => new AgentClient({ auth, id, name, icon });
 	const agentClientFunction = ts.factory.createVariableStatement(
 		[ts.factory.createModifier(ts.SyntaxKind.ExportKeyword)],
 		ts.factory.createVariableDeclarationList(
 			[
 				ts.factory.createVariableDeclaration(
-					// Creates: FoodManager (variable name)
-					ts.factory.createIdentifier(agentClassName),
+					// Creates: foodManager (variable name)
+					ts.factory.createIdentifier(agentModuleName),
 					undefined,
 					undefined,
 					// Creates: (auth: string) => new AgentClient({ auth, id, name })
@@ -639,33 +435,17 @@ async function createTypescriptFileForAgent(
 		agentClientFunction,
 	]);
 
-	const sourceFile = ts.createSourceFile(
-		"placeholder.ts",
-		"",
-		ts.ScriptTarget.ESNext,
-		true,
-		ts.ScriptKind.TS,
-	);
-	const printer = ts.createPrinter();
-
-	const typescriptCodeToString = printer.printList(
-		ts.ListFormat.MultiLine,
-		allNodes,
-		sourceFile,
-	);
-
-	const transpileToJavaScript = ts.transpile(typescriptCodeToString, {
-		module: ts.ModuleKind.None,
-		target: ts.ScriptTarget.ESNext,
-	});
-
 	if (!fs.existsSync(AGENTS_DIR)) {
 		fs.mkdirSync(AGENTS_DIR, { recursive: true });
 	}
 
-	const tsFilePath = path.resolve(AGENTS_DIR, `${agentClassName}.ts`);
-	const jsFilePath = path.resolve(AGENTS_DIR, `${agentClassName}.js`);
-
-	fs.writeFileSync(tsFilePath, typescriptCodeToString);
-	fs.writeFileSync(jsFilePath, transpileToJavaScript);
+	const tsFilePath = path.resolve(AGENTS_DIR, `${agentModuleName}.ts`);
+	const jsFilePath = path.resolve(AGENTS_DIR, `${agentModuleName}.js`);
+	emitTsAndJsArtifacts({
+		nodes: allNodes,
+		tsPath: tsFilePath,
+		jsPath: jsFilePath,
+		module: TS_EMIT_OPTIONS_GENERATED.module,
+		target: TS_EMIT_OPTIONS_GENERATED.target,
+	});
 }
