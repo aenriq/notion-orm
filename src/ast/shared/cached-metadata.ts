@@ -4,9 +4,9 @@
  */
 
 import fs from "fs";
-import path from "path";
 import { z } from "zod";
-import { AGENTS_DIR, AST_FS_PATHS } from "./constants";
+import { toUndashedNotionId } from "../../helpers";
+import { AST_FS_PATHS } from "./constants";
 
 const cachedEntityMetadataSchema = z.object({
 	id: z.string(),
@@ -15,7 +15,7 @@ const cachedEntityMetadataSchema = z.object({
 });
 const legacyCachedEntityMetadataSchema = z.object({
 	id: z.string(),
-	className: z.string(),
+	className: z.string().optional(),
 	displayName: z.string(),
 	camelCaseName: z.string(),
 });
@@ -25,22 +25,52 @@ const cachedEntityMetadataArraySchema = z.array(
 
 export type CachedEntityMetadata = z.infer<typeof cachedEntityMetadataSchema>;
 
-/** Parses cached metadata defensively and normalizes legacy shape. Invalid payloads yield []. */
+type ParsedCachedMetadataEntry = z.infer<
+	typeof cachedEntityMetadataArraySchema
+>[number];
+type NormalizableCachedMetadataEntry =
+	| ({ kind: "current" } & z.infer<typeof cachedEntityMetadataSchema>)
+	| ({ kind: "legacy" } & z.infer<typeof legacyCachedEntityMetadataSchema>);
+
+function toNormalizableEntry(
+	entry: ParsedCachedMetadataEntry,
+): NormalizableCachedMetadataEntry {
+	if ("name" in entry) {
+		return { kind: "current", ...entry };
+	}
+	return { kind: "legacy", ...entry };
+}
+
+function normalizeMetadataEntry(
+	entry: NormalizableCachedMetadataEntry,
+): CachedEntityMetadata {
+	if (entry.kind === "current") {
+		return {
+			id: toUndashedNotionId(entry.id),
+			name: entry.name,
+			displayName: entry.displayName,
+		};
+	}
+	return {
+		id: toUndashedNotionId(entry.id),
+		name: entry.camelCaseName,
+		displayName: entry.displayName,
+	};
+}
+
 export function parseMetadataArray(content: string): CachedEntityMetadata[] {
-	const parsedContent: unknown = JSON.parse(content);
+	let parsedContent: unknown;
+	try {
+		parsedContent = JSON.parse(content);
+	} catch {
+		return [];
+	}
+
 	const parseResult = cachedEntityMetadataArraySchema.safeParse(parsedContent);
 	if (!parseResult.success) {
 		return [];
 	}
-	return parseResult.data.map((entry) =>
-		"name" in entry
-			? entry
-			: {
-					id: entry.id,
-					name: entry.camelCaseName,
-					displayName: entry.displayName,
-				},
-	);
+	return parseResult.data.map(toNormalizableEntry).map(normalizeMetadataEntry);
 }
 
 /** Reads metadata from disk; returns [] if file missing or unparseable. */
@@ -63,5 +93,5 @@ export function readDatabaseMetadata(): CachedEntityMetadata[] {
 
 /** Loads cached agent metadata so source index emission can include both databases and agents. */
 export function readAgentMetadataFromDisk(): CachedEntityMetadata[] {
-	return readMetadataFromDisk(path.resolve(AGENTS_DIR, "metadata.json"));
+	return readMetadataFromDisk(AST_FS_PATHS.agentMetadataFile);
 }

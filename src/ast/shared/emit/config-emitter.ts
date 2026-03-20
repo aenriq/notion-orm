@@ -51,7 +51,7 @@ function createAuthVariableStatement(): ts.VariableStatement {
 	ts.addSyntheticLeadingComment(
 		statement,
 		ts.SyntaxKind.SingleLineCommentTrivia,
-		" Be sure to create a .env.local file and add your NOTION_KEY",
+		" Be sure to create a .env file and add your NOTION_KEY",
 		true,
 	);
 	ts.addSyntheticLeadingComment(
@@ -66,23 +66,31 @@ function createAuthVariableStatement(): ts.VariableStatement {
 		" [here](https://developers.notion.com)",
 		true,
 	);
+	ts.addSyntheticLeadingComment(
+		statement,
+		ts.SyntaxKind.SingleLineCommentTrivia,
+		" Agents are auto-populated by: notion sync",
+		true,
+	);
 	return statement;
 }
 
 function createConfigProperty(args: {
 	name: ConfigListKey;
-	helpText: string;
+	helpText?: string;
 }): ts.PropertyAssignment {
 	const property = ts.factory.createPropertyAssignment(
 		ts.factory.createIdentifier(args.name),
 		ts.factory.createArrayLiteralExpression([], true),
 	);
-	ts.addSyntheticLeadingComment(
-		property,
-		ts.SyntaxKind.SingleLineCommentTrivia,
-		` ${args.helpText}`,
-		true,
-	);
+	if (args.helpText) {
+		ts.addSyntheticLeadingComment(
+			property,
+			ts.SyntaxKind.SingleLineCommentTrivia,
+			` ${args.helpText}`,
+			true,
+		);
+	}
 	return property;
 }
 
@@ -120,7 +128,6 @@ export function buildConfigTemplateModuleAst(args: {
 							}),
 							createConfigProperty({
 								name: "agents",
-								helpText: "Auto-populated by: notion sync",
 							}),
 						],
 						true,
@@ -270,6 +277,30 @@ function findObjectLiteralFromNamedVariable(args: {
 	return objectLiteral;
 }
 
+function resolveObjectLiteralFromExpressionOrIdentifier(args: {
+	ast: t.File;
+	expression: t.Node | undefined | null;
+}): t.ObjectExpression | undefined {
+	if (!args.expression) {
+		return undefined;
+	}
+	if (!t.isExpression(args.expression) && !t.isPrivateName(args.expression)) {
+		return undefined;
+	}
+
+	const directObjectLiteral = unwrapExpressionToObjectLiteral(args.expression);
+	if (directObjectLiteral) {
+		return directObjectLiteral;
+	}
+	if (args.expression && t.isIdentifier(args.expression)) {
+		return findObjectLiteralFromNamedVariable({
+			ast: args.ast,
+			variableName: args.expression.name,
+		});
+	}
+	return undefined;
+}
+
 /**
  * Finds config object from `module.exports = ...` assignment.
  * Supports both direct object literals and identifier references.
@@ -289,21 +320,14 @@ function findObjectLiteralFromModuleExports(
 			!t.isIdentifier(node.left.object) ||
 			node.left.object.name !== "module" ||
 			!t.isIdentifier(node.left.property) ||
-			node.left.property.name !== "exports" ||
-			!t.isExpression(node.right)
+			node.left.property.name !== "exports"
 		) {
 			return;
 		}
-		objectLiteral = unwrapExpressionToObjectLiteral(node.right);
-		if (objectLiteral) {
-			return;
-		}
-		if (t.isIdentifier(node.right)) {
-			objectLiteral = findObjectLiteralFromNamedVariable({
-				ast,
-				variableName: node.right.name,
-			});
-		}
+		objectLiteral = resolveObjectLiteralFromExpressionOrIdentifier({
+			ast,
+			expression: node.right,
+		});
 	});
 	return objectLiteral;
 }
@@ -320,18 +344,10 @@ function findObjectLiteralFromExportDefault(
 		if (objectLiteral || !t.isExportDefaultDeclaration(node)) {
 			return;
 		}
-		if (t.isExpression(node.declaration)) {
-			objectLiteral = unwrapExpressionToObjectLiteral(node.declaration);
-			if (objectLiteral) {
-				return;
-			}
-		}
-		if (t.isIdentifier(node.declaration)) {
-			objectLiteral = findObjectLiteralFromNamedVariable({
-				ast,
-				variableName: node.declaration.name,
-			});
-		}
+		objectLiteral = resolveObjectLiteralFromExpressionOrIdentifier({
+			ast,
+			expression: node.declaration,
+		});
 	});
 	return objectLiteral;
 }
@@ -426,6 +442,107 @@ function areEqualStringLists(left: string[], right: string[]): boolean {
 		}
 	}
 	return true;
+}
+
+function detectIndentUnit(sourceCode: string): string {
+	const tabIndentedLine = sourceCode.match(/^\t+/m);
+	if (tabIndentedLine) {
+		return "\t";
+	}
+	const spaceIndentedLine = sourceCode.match(/^( +)\S/m);
+	if (!spaceIndentedLine || spaceIndentedLine[1].length < 2) {
+		return "  ";
+	}
+	return spaceIndentedLine[1];
+}
+
+function getLineIndentAtIndex(args: {
+	sourceCode: string;
+	index: number;
+}): string {
+	const { sourceCode, index } = args;
+	const lineStartIndex = sourceCode.lastIndexOf("\n", index - 1) + 1;
+	let cursor = lineStartIndex;
+	while (cursor < sourceCode.length) {
+		const char = sourceCode[cursor];
+		if (char !== " " && char !== "\t") {
+			break;
+		}
+		cursor += 1;
+	}
+	return sourceCode.slice(lineStartIndex, cursor);
+}
+
+function formatConfigListArraysToMultiline(args: {
+	sourceCode: string;
+	isTS: boolean;
+}): string {
+	const { sourceCode, isTS } = args;
+	const ast = parseConfigSource({ sourceCode, isTS });
+	const configObject = findConfigObjectLiteral(ast);
+	if (!configObject) {
+		return sourceCode;
+	}
+	const indentUnit = detectIndentUnit(sourceCode);
+	const replacements: Array<{ start: number; end: number; nextText: string }> =
+		[];
+
+	for (const property of configObject.properties) {
+		if (
+			!isConfigListProperty(property, "databases") &&
+			!isConfigListProperty(property, "agents")
+		) {
+			continue;
+		}
+		if (!t.isArrayExpression(property.value)) {
+			continue;
+		}
+
+		const arrayValue = property.value;
+		if (arrayValue.elements.length === 0) {
+			continue;
+		}
+		if (
+			arrayValue.start == null ||
+			arrayValue.end == null ||
+			property.start == null
+		) {
+			continue;
+		}
+
+		const propertyIndent = getLineIndentAtIndex({
+			sourceCode,
+			index: property.start,
+		});
+		const elementIndent = `${propertyIndent}${indentUnit}`;
+		const formattedElements = arrayValue.elements
+			.filter((element): element is t.Expression => element !== null)
+			.map(
+				(element) =>
+					`${elementIndent}${generate(element, { concise: false }).code},`,
+			)
+			.join("\n");
+
+		replacements.push({
+			start: arrayValue.start,
+			end: arrayValue.end,
+			nextText: `[\n${formattedElements}\n${propertyIndent}]`,
+		});
+	}
+
+	if (replacements.length === 0) {
+		return sourceCode;
+	}
+	let formattedCode = sourceCode;
+	for (const replacement of replacements.sort(
+		(left, right) => right.start - left.start,
+	)) {
+		formattedCode =
+			formattedCode.slice(0, replacement.start) +
+			replacement.nextText +
+			formattedCode.slice(replacement.end);
+	}
+	return formattedCode;
 }
 
 /**
@@ -541,6 +658,9 @@ export function updateConfigListInConfigModule(args: {
 	});
 	return {
 		modified: true,
-		code: output.code,
+		code: formatConfigListArraysToMultiline({
+			sourceCode: output.code,
+			isTS,
+		}),
 	};
 }

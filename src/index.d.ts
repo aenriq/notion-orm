@@ -1,9 +1,9 @@
-import { customerOrders } from "../db/customerOrders";
-import { edgeCases } from "../db/edgeCases";
+import type { customerOrders } from "../db/customerOrders";
+import type { edgeCases } from "../db/edgeCases";
 import NotionORMBase, { AgentClient, DatabaseClient } from "./base";
 export type { NotionConfigType, Query } from "./base";
 export { AgentClient, DatabaseClient } from "./base";
-class NotionORM extends NotionORMBase {
+export default class NotionORM extends NotionORMBase {
     public databases: {
         customerOrders: ReturnType<typeof customerOrders>;
         edgeCases: ReturnType<typeof edgeCases>;
@@ -11,13 +11,5 @@ class NotionORM extends NotionORMBase {
     public agents: {};
     constructor(config: {
         auth: string;
-    }) {
-        super(config);
-        this.databases = {
-            customerOrders: customerOrders(config.auth),
-            edgeCases: edgeCases(config.auth)
-        };
-        this.agents = {};
-    }
+    });
 }
-export default NotionORM;

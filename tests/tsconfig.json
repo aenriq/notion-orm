@@ -1,0 +1,14 @@
+{
+	"extends": "../tsconfig.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"rootDir": "..",
+		"module": "esnext",
+		"moduleResolution": "bundler",
+		"strict": false,
+		"skipLibCheck": true,
+		"types": ["node"]
+	},
+	"include": ["./**/*.ts", "./**/*.d.ts", "../src/babel-types.d.ts"],
+	"exclude": ["./golden/**"]
+}

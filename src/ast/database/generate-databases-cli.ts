@@ -1,12 +1,12 @@
 /**
  * CLI orchestration for database type generation.
- * Handles metadata management, file generation coordination, and CLI entry point.
+ * Resolves target database ids, emits per-database modules, persists metadata,
+ * and refreshes the generated registries used by the root ORM index.
  */
-
 import { Client } from "@notionhq/client";
 import fs from "fs";
-import path from "path";
 import { getNotionConfig } from "../../config/loadConfig";
+import { toUndashedNotionId } from "../../helpers";
 import {
 	type CachedEntityMetadata,
 	readAgentMetadataFromDisk,
@@ -21,9 +21,6 @@ import { updateSourceIndexFile } from "../shared/emit/orm-index-emitter";
 import { emitRegistryModuleArtifacts } from "../shared/emit/registry-emitter";
 import { createTypescriptFileForDatabase } from "./database-file-writer";
 
-/**
- * Persists database metadata snapshot after generation completes.
- */
 function writeDatabaseMetadata(metadata: CachedEntityMetadata[]): void {
 	if (!fs.existsSync(DATABASES_DIR)) {
 		fs.mkdirSync(DATABASES_DIR, { recursive: true });
@@ -37,50 +34,34 @@ function writeDatabaseMetadata(metadata: CachedEntityMetadata[]): void {
 type CreateDatabaseTypesOptions =
 	| { type: "all" }
 	| { type: "incremental"; id: string };
+type GenerationProgress = { completed: number; total: number };
+type CreateDatabaseTypesArgs = CreateDatabaseTypesOptions & {
+	onProgress?: (progress: GenerationProgress) => void;
+	skipSourceIndexUpdate?: boolean;
+};
 
 /**
  * Main database generation entrypoint used by CLI commands.
- * Flow: resolve target IDs -> generate db files -> write metadata -> emit
- * database registry + root NotionORM index artifacts.
+ * Supports both full regeneration and incremental single-database refreshes.
  */
 export const createDatabaseTypes = async (
-	options: CreateDatabaseTypesOptions,
-): Promise<{ databaseNames: string[] }> => {
+	options: CreateDatabaseTypesArgs,
+): Promise<{ databaseNames: string[]; databaseKeys: string[] }> => {
 	const config = await getNotionConfig();
-	if (!config.auth) {
-		console.error(
-			"⚠️ Integration key not found. Inside 'notion.config.js/ts' file, please pass a valid Notion Integration Key",
-		);
-		process.exit(1);
-	}
 
 	const client = new Client({
 		auth: config.auth,
 		notionVersion: AST_RUNTIME_CONSTANTS.NOTION_API_VERSION,
 	});
 
-	// Determine target database IDs and generation mode
 	const isFullGenerate = options.type === "all";
 	const targetIds = isFullGenerate ? config.databases : [options.id];
 
-	// Prepare for full or incremental generation
 	let metadataMap: Map<string, CachedEntityMetadata>;
 
 	if (isFullGenerate) {
-		if (fs.existsSync(DATABASES_DIR)) {
-			const files = fs.readdirSync(DATABASES_DIR);
-			for (const file of files) {
-				const filePath = path.join(DATABASES_DIR, file);
-				try {
-					if (fs.statSync(filePath).isFile()) {
-						fs.unlinkSync(filePath);
-					}
-				} catch {
-					// Ignore errors
-				}
-			}
-		}
-		console.log("🔄 Updating all database schemas...");
+		// Start from a clean generated directory so removed databases do not linger.
+		fs.rmSync(DATABASES_DIR, { recursive: true, force: true });
 		metadataMap = new Map();
 	} else {
 		if (targetIds.length === 0) {
@@ -89,55 +70,60 @@ export const createDatabaseTypes = async (
 		}
 		metadataMap = prepareIncrementalMetadata(config.databases);
 	}
+	options.onProgress?.({ completed: 0, total: targetIds.length });
 
 	if (targetIds.length === 0) {
-		console.log(
-			"⚠️  No database IDs found in config. Skipping database generation.",
-		);
 		writeDatabaseMetadata([]);
 		createDatabaseBarrelFile({ databaseInfo: [] });
-		const agentsMetadata = readAgentMetadataFromDisk();
-		updateSourceIndexFile([], agentsMetadata);
-		return { databaseNames: [] };
+		if (!options.skipSourceIndexUpdate) {
+			const agentsMetadata = readAgentMetadataFromDisk();
+			updateSourceIndexFile([], agentsMetadata);
+		}
+		return { databaseNames: [], databaseKeys: [] };
 	}
 
 	const databaseNames: string[] = [];
+	const databaseKeys: string[] = [];
+	let completedCount = 0;
 
 	for (const databaseId of targetIds) {
 		try {
-			const dbMetaData = await generateDatabaseTypes(client, databaseId);
-			metadataMap.set(dbMetaData.id, dbMetaData);
-			databaseNames.push(dbMetaData.displayName);
-		} catch (error) {
-			console.error(`❌ Error generating types for: ${databaseId}`);
-			console.error(error);
-			return { databaseNames: [] };
+			const databaseMetadata = await generateDatabaseTypes(client, databaseId);
+			metadataMap.set(databaseMetadata.id, databaseMetadata);
+			databaseNames.push(databaseMetadata.displayName);
+			databaseKeys.push(databaseMetadata.name);
+			completedCount += 1;
+			options.onProgress?.({
+				completed: completedCount,
+				total: targetIds.length,
+			});
+		} catch (error: unknown) {
+			throw new Error(
+				`Error generating types for ${databaseId}: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
 		}
 	}
 
-	// Convert map to array and persist metadata
 	const databasesMetadata = Array.from(metadataMap.values());
 	writeDatabaseMetadata(databasesMetadata);
 
-	// Update barrel file and source index
 	createDatabaseBarrelFile({
-		databaseInfo: databasesMetadata.map((db) => ({
-			name: db.name,
-			displayName: db.displayName,
-		})),
+		databaseInfo: databasesMetadata.map((db) => ({ name: db.name })),
 	});
 
-	const agentsMetadata = readAgentMetadataFromDisk();
-	updateSourceIndexFile(databasesMetadata, agentsMetadata);
+	if (!options.skipSourceIndexUpdate) {
+		const agentsMetadata = readAgentMetadataFromDisk();
+		updateSourceIndexFile(databasesMetadata, agentsMetadata);
+	}
 
-	return { databaseNames };
+	return { databaseNames, databaseKeys };
 };
 
-/**
- * Emits `db/index.ts|js` registry used by generated NotionORM constructor.
- */
+/** Emits `db/index.ts|js` so generated databases can be addressed as a registry. */
 function createDatabaseBarrelFile(args: {
-	databaseInfo: Array<{ name: string; displayName: string }>;
+	databaseInfo: Array<{ name: string }>;
 }) {
 	const { databaseInfo } = args;
 
@@ -152,24 +138,19 @@ function createDatabaseBarrelFile(args: {
 	});
 }
 
-/**
- * Normalizes metadata shape used across registry and index emitters.
- */
 function createMetadata(
 	id: string,
 	name: string,
 	displayName: string,
 ): CachedEntityMetadata {
 	return {
-		id,
+		id: toUndashedNotionId(id),
 		name,
 		displayName,
 	};
 }
 
-/**
- * Generates one database module and returns metadata for cache/index emission.
- */
+/** Generates one database module and returns the normalized metadata entry. */
 async function generateDatabaseTypes(
 	client: Client,
 	databaseId: string,
@@ -184,13 +165,12 @@ async function generateDatabaseTypes(
 		databaseId: id,
 	} = await createTypescriptFileForDatabase(databaseObject);
 
-	const databaseMetaData = createMetadata(id, databaseModuleName, databaseName);
-	return databaseMetaData;
+	return createMetadata(id, databaseModuleName, databaseName);
 }
 
 /**
- * For incremental runs, keep only cached entries that still exist in config.
- * This avoids emitting stale database references in generated indexes.
+ * For incremental generation, keep only cached metadata for databases that are
+ * still present in config so stale registry entries are not re-emitted.
  */
 function prepareIncrementalMetadata(
 	configDatabaseIds: string[],
@@ -198,7 +178,7 @@ function prepareIncrementalMetadata(
 	const cachedDatabaseMetadata = readDatabaseMetadata();
 	const metadataMap = new Map<string, CachedEntityMetadata>();
 
-	const configIdsSet = new Set(configDatabaseIds);
+	const configIdsSet = new Set(configDatabaseIds.map(toUndashedNotionId));
 	for (const dbMetadata of cachedDatabaseMetadata) {
 		if (configIdsSet.has(dbMetadata.id)) {
 			metadataMap.set(dbMetadata.id, dbMetadata);

@@ -1,8 +1,35 @@
 import { pathToFileURL } from "url";
-import { NotionConfigType } from "./helpers";
+import { z } from "zod";
+import type { NotionConfigType } from "./helpers";
 import { findConfigFile } from "./helpers.js";
 
-let cachedConfig: NotionConfigType | undefined = undefined;
+let cachedConfig: NotionConfigType | undefined;
+
+const notionConfigSchema = z.object({
+	auth: z.string().min(1, "Missing 'auth' field in notion config"),
+	databases: z.array(z.string()),
+	agents: z.array(z.string()),
+});
+
+function getErrorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
+/** Validates the user config at the ingestion boundary and returns a typed shape. */
+function parseNotionConfig(input: unknown): NotionConfigType {
+	const parseResult = notionConfigSchema.safeParse(input);
+	if (!parseResult.success) {
+		const details = parseResult.error.issues
+			.map((issue) => {
+				const pathLabel =
+					issue.path.length > 0 ? issue.path.join(".") : "config";
+				return `${pathLabel}: ${issue.message}`;
+			})
+			.join(", ");
+		throw new Error(`Invalid notion config shape: ${details}`);
+	}
+	return parseResult.data;
+}
 
 /**
  * Dynamically loads the user's notion.config file.
@@ -10,77 +37,72 @@ let cachedConfig: NotionConfigType | undefined = undefined;
  * - Works with Node.js (ESM and CJS)
  * - Supports .ts, .js, .mjs config files
  */
-export async function loadUserConfig(absolutePath: string): Promise<any> {
-  // Detect if we're running in Bun
-  const isBun = typeof (globalThis as any).Bun !== "undefined";
+export async function loadUserConfig(absolutePath: string): Promise<unknown> {
+	const isBun = "Bun" in globalThis;
 
-  // 1) Try dynamic import first (works for Bun with .ts, Node with .js/.mjs)
-  try {
-    // For Bun, use direct import which handles TypeScript natively
-    // For Node, convert to file URL for proper ESM loading
-    const importPath = isBun ? absolutePath : pathToFileURL(absolutePath).href;
-    const mod = await import(importPath);
-    return mod.default ?? mod;
-  } catch (err) {
-    throw new Error(
-      `Failed to load config from '${absolutePath}': \n       ${err}`
-    );
-  }
+	// 1) Try dynamic import first (works for Bun with .ts, Node with .js/.mjs)
+	try {
+		const importPath = isBun ? absolutePath : pathToFileURL(absolutePath).href;
+		const mod = await import(importPath);
+		return mod.default ?? mod;
+	} catch (error: unknown) {
+		throw new Error(
+			`Failed to load config from '${absolutePath}': ${getErrorMessage(error)}`,
+		);
+	}
 }
 
-export async function loadConfig(
-  configPath: string
-): Promise<NotionConfigType> {
-  try {
-    const config = await loadUserConfig(configPath);
-    return config;
-  } catch (error: any) {
-    throw new Error(
-      `Failed to load config from ${configPath}: ${error.message}`
-    );
-  }
-}
+/** Loads and validates a user config module from a known path. */
+export async function loadConfig(configPath: string): Promise<NotionConfigType> {
+		try {
+			const config = await loadUserConfig(configPath);
+			return parseNotionConfig(config);
+		} catch (error: unknown) {
+			throw new Error(
+				`Failed to load config from ${configPath}: ${getErrorMessage(error)}`,
+			);
+		}
+	}
 
+/**
+ * Resolves config once per process, falling back to environment variables when
+ * no config file is present. This keeps CLI calls fast while preserving a
+ * single trust boundary for config validation.
+ */
 export async function getNotionConfig(): Promise<NotionConfigType> {
-  if (cachedConfig) {
-    return cachedConfig;
-  }
+	if (cachedConfig) {
+		return cachedConfig;
+	}
 
-  // Try to find config file
-  const configFile = await findConfigFile();
+	// Try to find config file
+	const configFile = findConfigFile();
 
-  if (!configFile) {
-    // Fallback to environment variable
-    const authFromEnv = process.env.NOTION_AUTH || process.env.NOTION_KEY;
-    if (authFromEnv) {
-      const config = {
-        auth: authFromEnv,
-        databases: [],
-        agents: [],
-      };
-      cachedConfig = config;
-      return config;
-    }
+	if (!configFile) {
+		// Fallback to environment variable
+		const authFromEnv = process.env.NOTION_AUTH || process.env.NOTION_KEY;
+		if (authFromEnv) {
+			const config = {
+				auth: authFromEnv,
+				databases: [],
+				agents: [],
+			};
+			cachedConfig = config;
+			return config;
+		}
 
-    throw new Error(
-      "No notion.config.js/ts file found and no NOTION_AUTH environment variable set. " +
-        "Please create a config file or set the NOTION_AUTH environment variable."
-    );
-  }
+		throw new Error(
+			"No notion.config.js/ts/mjs file found and no NOTION_AUTH/NOTION_KEY environment variable set. " +
+				"Please create a config file or set NOTION_AUTH or NOTION_KEY.",
+		);
+	}
 
-  const config = await loadConfig(configFile.path);
+	const config = await loadConfig(configFile.path);
 
-  // Validate config
-  if (!config.auth) {
-    throw new Error("Missing 'auth' field in notion config");
-  }
-
-  // Cache the config
-  cachedConfig = config;
-  return config;
+	cachedConfig = config;
+	return config;
 }
 
 // Clear cache (useful for testing or config updates)
 export function clearConfigCache(): void {
-  cachedConfig = undefined;
+	cachedConfig = undefined;
 }

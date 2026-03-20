@@ -29,7 +29,7 @@ export interface OrmEntityMetadata {
 }
 
 /**
- * Creates `import NotionORMBase, { AgentClient, DatabaseClient } from "./base"`.
+ * Creates `import NotionORMBase, { AgentClient, DatabaseClient } from "@haustle/notion-orm/build/src/base"`.
  */
 function createBaseImportDeclaration(): ts.ImportDeclaration {
 	return ts.factory.createImportDeclaration(
@@ -50,13 +50,13 @@ function createBaseImportDeclaration(): ts.ImportDeclaration {
 				),
 			]),
 		),
-		ts.factory.createStringLiteral("./base"),
+		ts.factory.createStringLiteral(AST_IMPORT_PATHS.ORM_BASE),
 		undefined,
 	);
 }
 
 /**
- * Re-exports base type surface from `./base`.
+ * Re-exports base type surface from the package base module.
  */
 function createBaseTypeExportDeclaration(): ts.ExportDeclaration {
 	return ts.factory.createExportDeclaration(
@@ -74,13 +74,13 @@ function createBaseTypeExportDeclaration(): ts.ExportDeclaration {
 				ts.factory.createIdentifier("Query"),
 			),
 		]),
-		ts.factory.createStringLiteral("./base"),
+		ts.factory.createStringLiteral(AST_IMPORT_PATHS.ORM_BASE),
 		undefined,
 	);
 }
 
 /**
- * Re-exports base runtime values from `./base`.
+ * Re-exports base runtime values from the package base module.
  */
 function createBaseValueExportDeclaration(): ts.ExportDeclaration {
 	return ts.factory.createExportDeclaration(
@@ -98,7 +98,7 @@ function createBaseValueExportDeclaration(): ts.ExportDeclaration {
 				ts.factory.createIdentifier("DatabaseClient"),
 			),
 		]),
-		ts.factory.createStringLiteral("./base"),
+		ts.factory.createStringLiteral(AST_IMPORT_PATHS.ORM_BASE),
 		undefined,
 	);
 }

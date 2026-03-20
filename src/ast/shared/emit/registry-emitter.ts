@@ -9,7 +9,7 @@ import { TS_EMIT_OPTIONS_DEFAULT } from "./ts-emit-options";
 export interface RegistryEntry {
 	importName: string;
 	importPath: string;
-	propertyName?: string;
+	registryKey?: string;
 }
 
 /**
@@ -41,9 +41,9 @@ export function buildRegistryModuleAst(args: {
 	);
 
 	const registryProperties = entries.map((entry) => {
-		const propertyName = entry.propertyName ?? entry.importName;
+		const registryKey = entry.registryKey ?? entry.importName;
 		return ts.factory.createPropertyAssignment(
-			ts.factory.createIdentifier(propertyName),
+			ts.factory.createIdentifier(registryKey),
 			ts.factory.createIdentifier(entry.importName),
 		);
 	});
