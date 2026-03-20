@@ -69,8 +69,8 @@ export class DatabaseClient<
 			name: string;
 			schema: SafeParseSchema;
 		}) {
-			// Bind the global fetch implementation so runtimes like Cloudflare
-			// Workers do not trip over illegal invocation when the Notion SDK calls it.
+			// Bind the global fetch implementation so edge runtimes do not trip
+			// over illegal invocation when the Notion SDK calls it.
 			const fetchImpl =
 				typeof fetch !== "undefined" ? fetch.bind(globalThis) : undefined;
 
