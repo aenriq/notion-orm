@@ -9,7 +9,7 @@ bun install
 bun run dev
 ```
 
-`dev` runs a one-time `build:assets`, then **concurrently**: MDX `build-content --watch`, Panda `--watch`, and **`next dev --webpack --port ${PORT:-8788}`**.
+`dev` runs a one-time `build:assets`, then **concurrently**: MDX `build-mdx-content --watch`, Panda `--watch`, and **`next dev --webpack --port ${PORT:-8788}`**.
 
 From the repo root: `bun run site` (same as `bun run dev` in this folder).
 
