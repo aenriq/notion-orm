@@ -24,8 +24,12 @@ interface SidebarProps {
 const shellClass = css({
 	maxW: "896px",
 	mx: "auto",
-	px: { base: "5", md: "8" },
+	px: { base: "10", md: "8" },
 	py: { base: "5", md: "8" },
+});
+
+const shellBgClass = css({
+	bg: "background",
 });
 
 const mobileTopNavClass = css({
@@ -35,8 +39,7 @@ const mobileTopNavClass = css({
 	gap: "4",
 	pb: "4",
 	mb: "6",
-	borderBottomWidth: "1px",
-	borderBottomColor: "border",
+	bg: "background",
 });
 
 const layoutClass = css({
@@ -44,7 +47,7 @@ const layoutClass = css({
 	gridTemplateColumns: { base: "1fr", lg: "245px minmax(0, 720px)" },
 	columnGap: { base: "0", lg: "5.6rem" },
 	justifyContent: "center",
-	mt: "100px",
+	mt: { base: "0", lg: "100px" },
 });
 
 const narrowLayoutClass = css({
@@ -58,6 +61,7 @@ const sidebarClass = css({
 	flexDirection: "column",
 	gap: "5",
 	alignSelf: "start",
+	bg: "background",
 });
 
 const sidebarBrandClass = css({
@@ -101,7 +105,9 @@ const contentClass = css({
 	minW: "0",
 });
 
-const articleClass = css({
+const articleBaseClass = css({
+	position: "relative",
+	zIndex: 1,
 	fontSize: "md",
 	lineHeight: "1.75",
 	color: "text",
@@ -111,6 +117,7 @@ const footerClass = css({
 	display: "flex",
 	justifyContent: "center",
 	pt: "5",
+	bg: "background",
 	color: "muted",
 	fontSize: "sm",
 });
@@ -353,8 +360,11 @@ export const Layout: FC<LayoutProps> = ({
 	toc,
 	showFooter = true,
 }) => {
+	const isHome = currentPath === "/";
+	const narrowMainColumn = isHome || currentPath === "/api-reference";
+
 	return (
-		<div className={shellClass}>
+		<div className={cx(shellClass, !isHome && shellBgClass)}>
 			<header className={mobileTopNavClass}>
 				<Link href="/" className={sidebarBrandClass}>
 					{siteTitle}
@@ -364,14 +374,10 @@ export const Layout: FC<LayoutProps> = ({
 				</a>
 			</header>
 
-			<div
-				className={cx(
-					layoutClass,
-					currentPath === "/api-reference" && narrowLayoutClass,
-				)}>
+			<div className={cx(layoutClass, narrowMainColumn && narrowLayoutClass)}>
 				<Sidebar sitePages={sitePages} currentPath={currentPath} toc={toc} />
 				<main className={contentClass}>
-					<article className={cx(articleClass, articleProseClass)}>
+					<article className={cx(articleBaseClass, articleProseClass)}>
 						{children}
 					</article>
 					{showFooter && (

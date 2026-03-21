@@ -3,6 +3,13 @@ import type { ReactNode } from "react";
 import "../styled-system/styles.css";
 import { AgentationDev } from "../site/AgentationDev";
 import { siteTitle } from "../site/config";
+import { css } from "../styled-system/css";
+
+const appRootClass = css({
+	position: "relative",
+	zIndex: 1,
+	minH: "100%",
+});
 
 export const metadata: Metadata = {
 	title: {
@@ -39,7 +46,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
 				/>
 			</head>
 			<body>
-				{children}
+				<div className={appRootClass}>{children}</div>
 				<AgentationDev />
 			</body>
 		</html>

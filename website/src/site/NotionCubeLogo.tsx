@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { css } from "../styled-system/css";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { css, cx } from "../styled-system/css";
 
 const VIEWPORT_W = 25;
 const VIEWPORT_H = 8;
@@ -140,6 +140,9 @@ const PRECOMPUTED_DISPLAY: readonly string[] = (() => {
 	return out;
 })();
 
+const HERO_SPACER_MINH_MOBILE = "50vh";
+const HERO_SPACER_MINH = "62vh";
+
 const wrapperClass = css({
 	display: "flex",
 	justifyContent: "center",
@@ -147,10 +150,38 @@ const wrapperClass = css({
 	mt: "2",
 });
 
+const fixedHeroShellClass = css({
+	position: "fixed",
+	zIndex: 0,
+	pointerEvents: "none",
+	overflow: "hidden",
+	minH: { base: HERO_SPACER_MINH_MOBILE, lg: "auto" },
+	h: { base: HERO_SPACER_MINH_MOBILE, lg: "auto" },
+});
+
+const fixedHeroInnerClass = css({
+	display: "flex",
+	justifyContent: "center",
+	alignItems: "center",
+	w: "full",
+	minW: "0",
+	h: "full",
+	minH: "0",
+});
+
+const fixedHeroSpacerClass = css({
+	w: "full",
+	minH: { base: HERO_SPACER_MINH_MOBILE, lg: HERO_SPACER_MINH },
+	display: "flex",
+	justifyContent: "center",
+	alignItems: "center",
+	overflow: "hidden",
+});
+
 const preClass = css({
 	fontFamily: "mono",
-	fontSize: { base: "2xs", sm: "xs", md: "sm" },
-	lineHeight: { base: "1.12", md: "1.22" },
+	fontSize: { base: "xs", md: "sm" },
+	lineHeight: { base: "1.18", md: "1.22" },
 	fontWeight: "600",
 	letterSpacing: "0.01em",
 	color: "text",
@@ -162,9 +193,14 @@ const preClass = css({
 	p: "0",
 });
 
+const fixedHeroPreClass = css({
+	maxW: "100%",
+});
+
 interface NotionCubeLogoProps {
 	animate?: boolean;
 	viewportRows?: readonly string[];
+	fixedHero?: boolean;
 }
 
 function viewportRowsToGrid(rows: readonly string[]): string[][] {
@@ -174,46 +210,129 @@ function viewportRowsToGrid(rows: readonly string[]): string[][] {
 }
 
 export function NotionCubeLogo({
-	animate = true,
-	viewportRows,
-}: NotionCubeLogoProps) {
-	const [frame, setFrame] = useState(0);
-	const [reduceMotion, setReduceMotion] = useState(false);
+		animate = true,
+		viewportRows,
+		fixedHero = false,
+	}: NotionCubeLogoProps) {
+		const [frame, setFrame] = useState(0);
+		const [reduceMotion, setReduceMotion] = useState(false);
+		const heroSpacerRef = useRef<HTMLDivElement>(null);
+		const [heroBand, setHeroBand] = useState<{
+			top: number;
+			height: number;
+			left: number;
+			width: number;
+		} | null>(null);
 
-	useEffect(() => {
-		if (!animate) {
-			setReduceMotion(true);
-			return;
+		useLayoutEffect(() => {
+			if (!fixedHero) {
+				return;
+			}
+			const el = heroSpacerRef.current;
+			if (!el) {
+				return;
+			}
+			let rafId = 0;
+			const sync = () => {
+				const r = el.getBoundingClientRect();
+				setHeroBand((prev) => {
+					const next = {
+						top: Math.max(0, r.top),
+						height: r.height,
+						left: r.left,
+						width: r.width,
+					};
+					return prev &&
+						prev.top === next.top &&
+						prev.height === next.height &&
+						prev.left === next.left &&
+						prev.width === next.width
+						? prev
+						: next;
+				});
+			};
+			const syncNextFrame = () => {
+				window.cancelAnimationFrame(rafId);
+				rafId = window.requestAnimationFrame(sync);
+			};
+			sync();
+			const ro = new ResizeObserver(syncNextFrame);
+			ro.observe(el);
+			window.addEventListener("resize", syncNextFrame);
+			window.addEventListener("load", syncNextFrame);
+			void document.fonts.ready.then(syncNextFrame);
+			return () => {
+				ro.disconnect();
+				window.cancelAnimationFrame(rafId);
+				window.removeEventListener("resize", syncNextFrame);
+				window.removeEventListener("load", syncNextFrame);
+			};
+		}, [fixedHero]);
+
+		useEffect(() => {
+			if (!animate) {
+				setReduceMotion(true);
+				return;
+			}
+			const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+			const update = () => setReduceMotion(mq.matches);
+			update();
+			mq.addEventListener("change", update);
+			return () => mq.removeEventListener("change", update);
+		}, [animate]);
+
+		useEffect(() => {
+			if (reduceMotion) {
+				return;
+			}
+			const id = window.setInterval(() => {
+				setFrame((n) => (n + 1) % FRAME_COUNT);
+			}, 90);
+			return () => window.clearInterval(id);
+		}, [reduceMotion]);
+
+		const staticText = viewportRows
+			? buildMonitorLines(viewportRowsToGrid(viewportRows)).join("\n")
+			: PRECOMPUTED_DISPLAY[0];
+
+		const text =
+			reduceMotion || !animate
+				? staticText
+				: (PRECOMPUTED_DISPLAY[frame] ?? PRECOMPUTED_DISPLAY[0]);
+
+		const pre = (
+			<pre className={cx(preClass, fixedHero && fixedHeroPreClass)}>{text}</pre>
+		);
+
+		if (fixedHero) {
+			return (
+				<>
+					<div
+						ref={heroSpacerRef}
+						className={fixedHeroSpacerClass}
+						aria-hidden="true">
+						{heroBand ? null : pre}
+					</div>
+					{heroBand ? (
+						<div
+							className={fixedHeroShellClass}
+							aria-hidden="true"
+							style={{
+								top: heroBand.top,
+								left: heroBand.left,
+								width: heroBand.width,
+								height: heroBand.height,
+							}}>
+							<div className={fixedHeroInnerClass}>{pre}</div>
+						</div>
+					) : null}
+				</>
+			);
 		}
-		const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-		const update = () => setReduceMotion(mq.matches);
-		update();
-		mq.addEventListener("change", update);
-		return () => mq.removeEventListener("change", update);
-	}, [animate]);
 
-	useEffect(() => {
-		if (reduceMotion) {
-			return;
-		}
-		const id = window.setInterval(() => {
-			setFrame((n) => (n + 1) % FRAME_COUNT);
-		}, 90);
-		return () => window.clearInterval(id);
-	}, [reduceMotion]);
-
-	const staticText = viewportRows
-		? buildMonitorLines(viewportRowsToGrid(viewportRows)).join("\n")
-		: PRECOMPUTED_DISPLAY[0];
-
-	const text =
-		reduceMotion || !animate
-			? staticText
-			: (PRECOMPUTED_DISPLAY[frame] ?? PRECOMPUTED_DISPLAY[0]);
-
-	return (
-		<div className={wrapperClass} aria-hidden="true">
-			<pre className={preClass}>{text}</pre>
-		</div>
-	);
-}
+		return (
+			<div className={wrapperClass} aria-hidden="true">
+				{pre}
+			</div>
+		);
+	}
