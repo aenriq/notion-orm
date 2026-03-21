@@ -2,7 +2,7 @@ import {
 	createConfigTemplate,
 	shouldUseTypeScript,
 	showSetupInstructions,
-} from "cli/helpers";
+} from "../cli/helpers";
 import fs from "fs";
 import path from "path";
 import { getNotionConfig } from "./loadConfig";

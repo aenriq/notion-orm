@@ -6,7 +6,7 @@ import {
 	findConfigFile,
 	initializeNotionConfigFile,
 	validateConfig,
-} from "config/helpers";
+} from "../config/helpers";
 import { createAgentTypes } from "../ast/agents/generate-agents-cli";
 import { createDatabaseTypes } from "../ast/database/generate-databases-cli";
 import {
