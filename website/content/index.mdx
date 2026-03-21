@@ -1,23 +1,25 @@
 ---
 path: /
 title: Overview
-description: A lightweight TypeScript Notion API wrapper for databases and custom agents.
+description: A Notion API TypeScript wrapper that aims to improve interactions with databases and agents by building local static schemas.
 ---
 
-<NotionCubeLogo />
+<NotionCubeLogo fixedHero />
+
+<DocsProse>
 
 # Notion ORM
 
-A lightweight TypeScript [Notion API](https://developers.notion.com/) wrapper that aims to improve interactions with databases and custom agents, by leveraging static schema types
+A typed [Notion API](https://developers.notion.com/) wrapper for databases and agents with generated local schemas
 
 ## Key Features
 
 - Type inference when interacting with databases (e.g, `add` and `query`)
-- Manage database and agents in Notion
+- Manage databases and agents in Notion
 - Sync remote schema changes in a single command
 - Quickly start/resume chat streams with your agents
 - Access exported property values, schemas, and types (ex. `zod` validators)
-- Using `zod`, validate config and other untrusted boundary input with typed schemas and clear parse errors
+- Validate config and other untrusted input with `zod`
 
 ## Setup
 
@@ -67,7 +69,6 @@ Agents linked to the integration are automatically populated during `notion sync
 ### Full sync command (`notion sync`)
 
 - Fetch/refresh database schemas + custom agents.
-- If you're unsure of the state of the world or scared, just run this command.
 
 ```bash
 bun notion sync
@@ -349,3 +350,5 @@ Runtime dependencies:
 ## Disclaimer
 
 This is an unofficial Notion API SDK. While I work at Notion currently, this is tooling I've built for side projects.
+
+</DocsProse>

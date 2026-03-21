@@ -416,10 +416,23 @@ const StackedTable: FC<{ children?: ReactNode }> = ({ children }) => {
 	);
 };
 
+const docsProseClass = css({
+	bg: "background",
+	position: "relative",
+	zIndex: 1,
+	minW: "0",
+	pt: "40px",
+});
+
+const DocsProse: FC<{ children?: ReactNode }> = ({ children }) => (
+	<div className={docsProseClass}>{children}</div>
+);
+
 const mdxComponents = {
 	pre: CodeBlock,
 	table: StackedTable,
 	NotionCubeLogo,
+	DocsProse,
 };
 
 export function useMDXComponents() {
