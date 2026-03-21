@@ -1,9 +1,11 @@
 node_modules
 build
+db
 .env
 package-lock.json
 .npmignore
 .env.local
+*.tgz
 website/.next/
 website/.styled-system/
 website/src/styled-system/
