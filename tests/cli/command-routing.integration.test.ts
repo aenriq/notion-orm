@@ -14,14 +14,18 @@ function runCli(args: string[]) {
 }
 
 describe("CLI index integration", () => {
-	// Checks the help command exits successfully and prints CLI usage text.
 	test("prints help output for help command", () => {
 		const output = runCli(["help"]);
 		expect(output.exitCode).toBe(0);
 		expect(output.stdout.toString()).toContain("Notion ORM CLI");
 	});
 
-	// Checks invalid add type exits with code 1 and a clear validation message.
+	test("help output includes setup-agents-sdk command", () => {
+		const output = runCli(["help"]);
+		expect(output.exitCode).toBe(0);
+		expect(output.stdout.toString()).toContain("setup-agents-sdk");
+	});
+
 	test("fails for invalid add type", () => {
 		const output = runCli([
 			"add",
@@ -35,7 +39,6 @@ describe("CLI index integration", () => {
 		);
 	});
 
-	// Checks mutually exclusive init flags are rejected with an error message.
 	test("fails when both --ts and --js are provided for init", () => {
 		const output = runCli(["init", "--ts", "--js"]);
 		expect(output.exitCode).toBe(1);

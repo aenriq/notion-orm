@@ -54,13 +54,35 @@ bun notion add <database-id>
 ```
 
 
-### Adding agents
+### Adding agents (paid feature)
 
-Agents linked to the integration are automatically populated during `notion sync` (No manual edits required)
+Agent support requires the [Notion Agents SDK](https://github.com/makenotion/notion-agents-sdk-js), which is **currently in alpha** and not published to npm. Because of this, a one-command setup handles the entire download-and-install flow for you:
+
+```bash
+bun notion setup-agents-sdk
+```
+
+**What this does:**
+1. Clones the SDK repository into a local cache (`node_modules/.cache/.notion-agents-sdk`)
+2. Installs the SDK's dependencies and builds it
+3. Adds the built `@notionhq/agents-client` package to your project
+
+After setup, run `notion sync` to generate agent types. Agents linked to your integration are automatically discovered.
+
+**Updating:** When the upstream SDK receives changes, rerun the same command. It pulls the latest from the cached clone, rebuilds, and reinstalls:
+
+```bash
+bun notion setup-agents-sdk
+bun notion sync
+```
+
+If you have not run the setup command, `notion sync` will skip agent generation and only produce database types. Once the SDK is published to npm, this step will no longer be necessary.
+
+Learn more about [Custom Agents](https://www.notion.com/help/custom-agents) in the Notion documentation.
 
 ### Full sync command (`notion sync`)
 
-Fetch/refresh database schemas + custom agents.
+Fetch/refresh database schemas. If the agents SDK is installed, also syncs custom agents.
 
 ```bash
 bun notion sync
@@ -407,7 +429,7 @@ Filterable properties are a subset (for example, `formula`, `files`, and `relati
 ```txt
 .
 ├── src
-│   ├── cli              # notion init / add / sync
+│   ├── cli              # notion init / add / sync / setup-agents-sdk
 │   ├── config           # config discovery, loading, and validation
 │   ├── client           # runtime DatabaseClient + AgentClient
 │   │   └── query        # typed filters + response simplification
