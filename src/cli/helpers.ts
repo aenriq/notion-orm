@@ -1,202 +1,215 @@
-import * as babelGenerator from "@babel/generator";
-import * as parser from "@babel/parser";
-import * as t from "@babel/types";
+import { spawnSync } from "node:child_process";
 import fs from "fs";
 import path from "path";
+import {
+	type ConfigListItem,
+	type ConfigListKey,
+	type ConfigListUpdateStrategy,
+	renderConfigTemplateModule,
+	updateConfigListInConfigModule,
+} from "../ast/shared/emit/config-emitter";
+import { toDashedNotionId, toUndashedNotionId } from "../helpers";
 
-const generate = babelGenerator.default || babelGenerator;
+const CONFIG_FILE_FORMATTERS = [
+	{
+		name: "prettier",
+		args: ["--write"],
+	},
+	{
+		name: "biome",
+		args: ["format", "--write"],
+	},
+] as const;
 
+type ConfigFileFormatter = (typeof CONFIG_FILE_FORMATTERS)[number];
+const HELP_COMMANDS = new Set(["help", "--help", "-h"]);
+
+/** Prefer project-local formatters so generated config matches repo conventions. */
+function getLocalFormatterExecutable(args: {
+	formatterName: ConfigFileFormatter["name"];
+}): string | undefined {
+	const executableSuffix = process.platform === "win32" ? ".cmd" : "";
+	const executablePath = path.join(
+		process.cwd(),
+		"node_modules",
+		".bin",
+		`${args.formatterName}${executableSuffix}`,
+	);
+	return fs.existsSync(executablePath) ? executablePath : undefined;
+}
+
+function runFormatterForConfigFile(args: {
+	configPath: string;
+	formatter: ConfigFileFormatter;
+}): "missing" | "failed" | "success" {
+	const executablePath = getLocalFormatterExecutable({
+		formatterName: args.formatter.name,
+	});
+	if (!executablePath) {
+		return "missing";
+	}
+
+	const formatterResult = spawnSync(
+		executablePath,
+		[...args.formatter.args, args.configPath],
+		{
+			cwd: process.cwd(),
+			stdio: "ignore",
+		},
+	);
+	return formatterResult.status === 0 ? "success" : "failed";
+}
+
+/** Format updated config files when local Prettier or Biome is available. */
+function formatConfigFileIfPossible(args: { configPath: string }): void {
+	let hasFormatterFailure = false;
+	for (const formatter of CONFIG_FILE_FORMATTERS) {
+		const formatResult = runFormatterForConfigFile({
+			configPath: args.configPath,
+			formatter,
+		});
+		if (formatResult === "success") {
+			return;
+		}
+		if (formatResult === "failed") {
+			hasFormatterFailure = true;
+		}
+	}
+
+	if (hasFormatterFailure) {
+		console.warn(
+			"⚠️  Updated config but could not auto-format it with local prettier/biome.",
+		);
+	}
+}
+
+/** Heuristic for `notion init`: TS projects get a TS config template by default. */
 export function shouldUseTypeScript(): boolean {
-  const cwd = process.cwd();
-  const tsConfigCandidates = [
-    "tsconfig.json",
-    "tsconfig.app.json",
-    "tsconfig.base.json",
-    "tsconfig.build.json",
-  ];
+	const cwd = process.cwd();
+	const tsConfigCandidates = [
+		"tsconfig.json",
+		"tsconfig.app.json",
+		"tsconfig.base.json",
+		"tsconfig.build.json",
+	];
 
-  for (const candidate of tsConfigCandidates) {
-    if (fs.existsSync(path.join(cwd, candidate))) {
-      return true;
-    }
-  }
+	for (const candidate of tsConfigCandidates) {
+		if (fs.existsSync(path.join(cwd, candidate))) {
+			return true;
+		}
+	}
 
-  return false;
+	return false;
 }
 
+/** Renders the starter config template and guarantees a trailing newline. */
 export function createConfigTemplate(isTS: boolean): string {
-  const lines = [
-    "// Be sure to create a .env.local file and add your NOTION_KEY",
-    "",
-    "// If you don't have an API key, sign up for free ",
-    "// [here](https://developers.notion.com)",
-    "",
-    'const auth = process.env.NOTION_KEY || "your-notion-api-key-here";',
-    "const NotionConfig = {",
-    "\tauth,",
-    "\tdatabaseIds: [",
-    '\t\t// Add undashed database source IDs here (ex. "2a3c495da03c80bc99fe000bbf2be4bb")',
-    "\t\t// or use the following command to automatically update",
-    "\t\t// `notion add <database-source-id or URL>`",
-    "\t\t// If you decide to manually add database IDs, be sure to run",
-    "\t\t// `notion generate` to properly update the local database types",
-    "\t],",
-    "};",
-    "",
-    isTS ? "export default NotionConfig;" : "module.exports = NotionConfig;",
-    "",
-  ];
-
-  return `${lines.join("\n")}\n`;
+	const renderedTemplate = renderConfigTemplateModule({ isTS });
+	return renderedTemplate.endsWith("\n")
+		? renderedTemplate
+		: `${renderedTemplate}\n`;
 }
 
+/** Prints setup guidance together with copy-pastable example configs. */
 export function showSetupInstructions(): void {
-  console.log("\n📚 Setup Instructions:");
-  console.log(
-    "1. Run: 'notion init' to create a notion.config file in project root"
-  );
-  console.log(
-    "2. Create API key and connect databases (learn [here](https://developers.notion.com/docs/create-a-notion-integration))"
-  );
-  console.log(
-    "3. Run 'notion add <data-source-id>' to add database to config and generate types"
-  );
+	console.log("\n📚 Setup Instructions:");
+	console.log(
+		"1. Run: notion init [--ts|--js] (defaults to TypeScript when tsconfig.json is present)",
+	);
+	console.log("2. Add your Notion integration token and database IDs");
+	console.log("3. Run: notion sync (generates database types)");
+	console.log(
+		"4. (Optional) Run: notion setup-agents-sdk (installs the paid Agents SDK, then re-run notion sync)",
+	);
+
+	console.log("\n📝 Example JavaScript config (notion.config.js):");
+	console.log(`\n${createConfigTemplate(false).trimEnd()}\n`);
+
+	console.log("📝 Example TypeScript config (notion.config.ts):");
+	console.log(`\n${createConfigTemplate(true).trimEnd()}\n`);
+
+	console.log("\n🔗 Need help getting your integration token?");
+	console.log(
+		"   Visit: https://developers.notion.com/docs/create-a-notion-integration",
+	);
 }
 
-export function validateAndGetUndashedUuid(id: string): string | undefined {
-  // Notion database IDs are UUIDs (with or without dashes)
-  const uuidPattern =
-    /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i;
-  const undashedUuid = id.replace(/-/g, "");
-  const isValidUndashedUuid = uuidPattern.test(undashedUuid);
-
-  // Validate that the undashed version is a valid UUID (32 hex characters)
-  if (!isValidUndashedUuid) {
-    return undefined;
-  }
-
-  return undashedUuid;
+export function validateAndGetUndashedNotionId(id: string): string | undefined {
+	try {
+		return toUndashedNotionId(id);
+	} catch {
+		return undefined;
+	}
 }
 
+// Backward-compatible alias for existing consumers.
+export const validateAndGetUndashedUuid = validateAndGetUndashedNotionId;
+
+/** Applies a focused AST edit to one list property inside the user's config file. */
+function updateConfigListInFile(args: {
+	configPath: string;
+	isTS: boolean;
+	key: ConfigListKey;
+	items: ConfigListItem[];
+	strategy: ConfigListUpdateStrategy;
+}): boolean {
+	try {
+		const originalContent = fs.readFileSync(args.configPath, "utf-8");
+		const output = updateConfigListInConfigModule({
+			sourceCode: originalContent,
+			isTS: args.isTS,
+			key: args.key,
+			items: args.items,
+			strategy: args.strategy,
+		});
+		if (!output.modified) {
+			return false;
+		}
+		fs.writeFileSync(args.configPath, output.code);
+		formatConfigFileIfPossible({ configPath: args.configPath });
+		return true;
+	} catch (error: unknown) {
+		console.error("❌ Error updating config file with AST:");
+		console.error(error);
+		process.exit(1);
+	}
+}
+
+/** Appends a database id to config while preserving AST-aware formatting and comments. */
 export async function writeConfigFileWithAST(
-  configPath: string,
-  newDatabaseId: string,
-  isTS: boolean
+	configPath: string,
+	newDatabaseId: string,
+	isTS: boolean,
+	name?: string,
 ): Promise<boolean> {
-  try {
-    // Read the original file content
-    const originalContent = fs.readFileSync(configPath, "utf-8");
+	const formattedDatabaseId = toDashedNotionId(newDatabaseId);
+	return updateConfigListInFile({
+		configPath,
+		isTS,
+		key: "databases",
+		items: [{ value: formattedDatabaseId, comment: name }],
+		strategy: "appendUnique",
+	});
+}
 
-    // Parse the file as AST
-    const ast = parser.parse(originalContent, {
-      sourceType: "module",
-      allowImportExportEverywhere: true,
-      plugins: isTS ? ["typescript"] : [],
-    });
-
-    // Find and modify the databaseIds array
-    let modified = false;
-
-    function modifyDatabaseIdsInObject(objExpression: any): void {
-      for (const prop of objExpression.properties) {
-        if (
-          t.isObjectProperty(prop) &&
-          t.isIdentifier(prop.key) &&
-          prop.key.name === "databaseIds" &&
-          t.isArrayExpression(prop.value)
-        ) {
-          // Check if the database ID already exists
-          const existingIds = prop.value.elements
-            .filter((el: any) => t.isStringLiteral(el))
-            .map((el: any) => el.value);
-
-          if (!existingIds.includes(newDatabaseId)) {
-            // Add the new database ID to the array
-            prop.value.elements.push(t.stringLiteral(newDatabaseId));
-            modified = true;
-          }
-          break;
-        }
-      }
-    }
-
-    function visitNode(node: any): void {
-      if (t.isVariableDeclarator(node) && t.isIdentifier(node.id)) {
-        // Handle: const NotionConfig = { ... }
-        if (t.isObjectExpression(node.init)) {
-          modifyDatabaseIdsInObject(node.init);
-        }
-      } else if (
-        t.isAssignmentExpression(node) &&
-        t.isMemberExpression(node.left) &&
-        t.isIdentifier(node.left.property) &&
-        node.left.property.name === "exports"
-      ) {
-        // Handle: module.exports = { ... }
-        if (t.isObjectExpression(node.right)) {
-          modifyDatabaseIdsInObject(node.right);
-        }
-      } else if (t.isExportDefaultDeclaration(node)) {
-        // Handle: export default { ... }
-        if (t.isObjectExpression(node.declaration)) {
-          modifyDatabaseIdsInObject(node.declaration);
-        }
-      }
-    }
-
-    // Traverse the AST
-    function traverse(node: any): void {
-      if (!node || typeof node !== "object") return;
-
-      visitNode(node);
-
-      // Recursively traverse child nodes
-      for (const key in node) {
-        if (node[key] && typeof node[key] === "object") {
-          if (Array.isArray(node[key])) {
-            node[key].forEach(traverse);
-          } else {
-            traverse(node[key]);
-          }
-        }
-      }
-    }
-
-    traverse(ast);
-
-    if (modified) {
-      // Generate the code from the modified AST
-      const output = generate(ast, {
-        retainLines: true,
-        concise: false,
-      });
-
-      // Write the modified content back to the file
-      fs.writeFileSync(configPath, output.code);
-      return true;
-    }
-
-    return false; // No modification needed (ID already exists)
-  } catch (error: any) {
-    console.error("❌ Error updating config file with AST:");
-    console.error(error.message);
-    throw new Error(
-      `Failed to update config file. Please manually add the database ID "${newDatabaseId}" to your config file.`
-    );
-  }
+/** Replaces the generated `agents` list with the latest live agent snapshot. */
+export async function syncAgentsInConfigWithAST(
+	configPath: string,
+	agents: Array<{ id: string; name: string }>,
+	isTS: boolean,
+): Promise<boolean> {
+	return updateConfigListInFile({
+		configPath,
+		isTS,
+		key: "agents",
+		items: agents.map((agent) => ({
+			value: toDashedNotionId(agent.id),
+			comment: agent.name,
+		})),
+		strategy: "replaceAll",
+	});
 }
 
 export function isHelpCommand(args: string[]): boolean {
-  const possibleArgument = args.length >= 1 ? args[0] : null;
-  if (!possibleArgument) {
-    return false;
-  }
-  switch (possibleArgument) {
-    case "help":
-    case "--help":
-    case "-h":
-      return true;
-    default:
-      return false;
-  }
+	return args.length > 0 && HELP_COMMANDS.has(args[0]);
 }
