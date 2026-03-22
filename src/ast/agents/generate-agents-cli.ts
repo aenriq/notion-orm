@@ -3,11 +3,11 @@
  * Syncs agent metadata into config, emits agent modules, and refreshes the
  * generated source index when requested.
  */
-import { NotionAgentsClient } from "@notionhq/agents-client";
 import fs from "fs";
 import path from "path";
 import * as ts from "typescript";
 import { z } from "zod";
+import { isAgentsSdkAvailable, loadAgentsSdk } from "../../agents-sdk-resolver";
 import { syncAgentsInConfigWithAST } from "../../cli/helpers";
 import type { AgentIcon } from "../../client/AgentClient";
 import { findConfigFile } from "../../config/helpers";
@@ -46,17 +46,23 @@ type CreateAgentTypesOptions = {
 	skipSourceIndexUpdate?: boolean;
 };
 
-/**
- * Main entrypoint for agent generation used by the CLI.
- * Fetches all shared agents, keeps config in sync, emits per-agent modules,
- * then updates registry metadata used by the root ORM index.
- */
+export type CreateAgentTypesResult = {
+	agentNames: string[];
+	skipped: boolean;
+};
+
+/** Returns `{ skipped: true }` when the agents SDK is not installed. */
 export const createAgentTypes = async (
 	options?: CreateAgentTypesOptions,
-): Promise<{ agentNames: string[] }> => {
+): Promise<CreateAgentTypesResult> => {
+	if (!isAgentsSdkAvailable()) {
+		return { agentNames: [], skipped: true };
+	}
+
+	const sdk = await loadAgentsSdk();
 	const config = await getNotionConfig();
 
-	const client = new NotionAgentsClient({
+	const client = new sdk.NotionAgentsClient({
 		auth: config.auth,
 	});
 
@@ -115,7 +121,7 @@ export const createAgentTypes = async (
 		updateSourceIndexFile(databasesMetadata, agentsMetadata);
 	}
 
-	return { agentNames };
+	return { agentNames, skipped: false };
 };
 
 /** Emits `agents/index.ts|js` so generated clients can be imported as a registry. */
@@ -145,10 +151,7 @@ function createMetadata(
 	};
 }
 
-/**
- * Trust boundary for icon payloads returned by the Notion Agents API.
- * Parsing here preserves the literal discriminants used by generated output.
- */
+/** Trust boundary for icon payloads returned by the Notion Agents API. */
 const agentIconSchema: z.ZodType<AgentIcon> = z.union([
 	z.object({
 		type: z.literal("emoji"),
@@ -185,13 +188,11 @@ const agentIconSchema: z.ZodType<AgentIcon> = z.union([
 	z.null(),
 ]);
 
-/** Converts unknown icon payloads into the canonical `AgentIcon` shape. */
 function parseAgentIcon(input: unknown): AgentIcon {
 	const parseResult = agentIconSchema.safeParse(input);
 	return parseResult.success ? parseResult.data : null;
 }
 
-/** Generates one agent module and returns the metadata used by registries. */
 async function generateAgentTypes(
 	agentId: string,
 	agentName: string,

@@ -1,14 +1,11 @@
-import {
-	type Agent,
-	collectMessages,
-	NotionAgentsClient,
-	type ThreadInfo as NotionThreadInfo,
-	type PollThreadOptions,
-	StreamError,
-	stripLangTags,
-	type ThreadListItem,
-	type ThreadStatus,
+import type {
+	Agent,
+	ThreadInfo as NotionThreadInfo,
+	PollThreadOptions,
+	ThreadListItem,
+	ThreadStatus,
 } from "@notionhq/agents-client";
+import { loadAgentsSdk, stripLangTags } from "../agents-sdk-resolver";
 
 export type AgentIcon =
 	| { type: "emoji"; emoji: string }
@@ -30,12 +27,17 @@ export type ThreadInfo = {
 	messages: NotionThreadInfo["messages"];
 };
 
+type LazyClient = {
+	sdk: typeof import("@notionhq/agents-client");
+	agent: Agent;
+};
+
 export class AgentClient {
 	public readonly id: string;
 	public readonly name: string;
 	public readonly icon: AgentIcon;
-	private readonly client: NotionAgentsClient;
-	private readonly agent: Agent;
+	private readonly auth: string;
+	private _lazy: LazyClient | null = null;
 
 	constructor(props: {
 		auth: string;
@@ -46,10 +48,18 @@ export class AgentClient {
 		this.id = props.id;
 		this.name = props.name;
 		this.icon = props.icon ?? null;
-		this.client = new NotionAgentsClient({
-			auth: props.auth,
-		});
-		this.agent = this.client.agents.agent(this.id);
+		this.auth = props.auth;
+	}
+
+	private async ensureClient(): Promise<LazyClient> {
+		if (this._lazy) {
+			return this._lazy;
+		}
+
+		const sdk = await loadAgentsSdk();
+		const client = new sdk.NotionAgentsClient({ auth: this.auth });
+		this._lazy = { sdk, agent: client.agents.agent(this.id) };
+		return this._lazy;
 	}
 
 	async listThreads(): Promise<
@@ -59,19 +69,18 @@ export class AgentClient {
 			status: ThreadStatus;
 		}[]
 	> {
-		const threads = await this.agent.listThreads();
-		const response = threads.results.map(
-			(thread: { id: string; title: string; status: ThreadStatus }) => ({
-				id: thread.id,
-				title: thread.title,
-				status: thread.status,
-			}),
-		);
-		return response;
+		const { agent } = await this.ensureClient();
+		const threads = await agent.listThreads();
+		return threads.results.map((thread) => ({
+			id: thread.id,
+			title: thread.title,
+			status: thread.status,
+		}));
 	}
 
 	async getThreadInfo(threadId: string): Promise<ThreadListItem> {
-		return this.agent.getThread(threadId);
+		const { agent } = await this.ensureClient();
+		return agent.getThread(threadId);
 	}
 
 	async getThreadTitle(threadId: string): Promise<string> {
@@ -79,23 +88,14 @@ export class AgentClient {
 		return threadInfo.title;
 	}
 
-	/**
-	 * Chat with the agent
-	 * @param props - The properties of the chat
-	 * @param props.message - The message to send to the agent
-	 * @param props.threadId - The thread ID to resume
-	 * @returns The response from the agent
-	 */
 	async chat(props: { message: string; threadId?: string }): Promise<{
 		status: ThreadStatus;
 		threadId: string;
 		isNewChat: boolean;
 	}> {
+		const { agent } = await this.ensureClient();
 		const { message, threadId } = props;
-		const response = await this.agent.chat({
-			message,
-			threadId,
-		});
+		const response = await agent.chat({ message, threadId });
 
 		if (threadId && threadId !== response.thread_id) {
 			throw new Error("Tried to resume a different thread");
@@ -107,23 +107,16 @@ export class AgentClient {
 		};
 	}
 
-	/**
-	 * Stream a chat conversation with the agent
-	 * @param props - The properties of the chat stream
-	 * @param props.message - The message to send to the agent
-	 * @param props.threadId - The thread ID to resume (optional)
-	 * @param props.onMessage - Optional callback for each message received
-	 * @returns ThreadInfo containing threadId, agentId, and all messages
-	 */
 	async chatStream(props: {
 		message: string;
 		threadId?: string;
 		onMessage?: (message: { role: "user" | "agent"; content: string }) => void;
 	}): Promise<ThreadInfo> {
+		const { agent, sdk } = await this.ensureClient();
 		const { message, threadId, onMessage } = props;
 
 		try {
-			const generator = this.agent.chatStream({
+			const generator = agent.chatStream({
 				message,
 				threadId,
 				onMessage: onMessage
@@ -136,8 +129,6 @@ export class AgentClient {
 					: undefined,
 			});
 
-			// Iterate through all chunks to completion
-			// The generator's return value (NotionThreadInfo) is available when done is true
 			let result = await generator.next();
 			while (!result.done) {
 				result = await generator.next();
@@ -153,18 +144,13 @@ export class AgentClient {
 				messages: result.value.messages,
 			};
 		} catch (error) {
-			if (error instanceof StreamError) {
+			if (error instanceof sdk.StreamError) {
 				throw new Error(`Stream error [${error.code}]: ${error.message}`);
 			}
 			throw error;
 		}
 	}
 
-	/**
-	 * Extract cleaned agent messages from ThreadInfo
-	 * @param threadInfo - The ThreadInfo from chatStream
-	 * @returns Cleaned agent message content (with lang tags stripped)
-	 */
 	static getAgentResponse(threadInfo: ThreadInfo): string {
 		return threadInfo.messages
 			.filter((msg) => msg.role === "agent")
@@ -172,31 +158,19 @@ export class AgentClient {
 			.join("");
 	}
 
-	/**
-	 * Get all messages from a thread
-	 * @param threadId - The thread ID to get messages from
-	 * @param options - Optional filtering options
-	 * @param options.role - Filter messages by role (optional)
-	 * @returns Array of all messages in the thread
-	 */
 	async getMessages(
 		threadId: string,
 		options?: { role?: "user" | "agent" },
 	): Promise<Array<{ role: "user" | "agent"; content: string }>> {
-		const thread = this.agent.thread(threadId);
-		const allMessages = await collectMessages(thread, options);
+		const { agent, sdk } = await this.ensureClient();
+		const thread = agent.thread(threadId);
+		const allMessages = await sdk.collectMessages(thread, options);
 		return allMessages.map((message) => ({
 			role: message.role,
 			content: message.content,
 		}));
 	}
 
-	/**
-	 * Poll a thread until completion
-	 * @param threadId - The thread ID to poll
-	 * @param options - Optional polling configuration
-	 * @returns Thread info with status, threadId, and title
-	 */
 	async pollThread(
 		threadId: string,
 		options?: Partial<PollThreadOptions>,
@@ -205,7 +179,8 @@ export class AgentClient {
 		threadId: string;
 		title?: string;
 	}> {
-		const thread = this.agent.thread(threadId);
+		const { agent } = await this.ensureClient();
+		const thread = agent.thread(threadId);
 		const defaults: PollThreadOptions = {
 			maxAttempts: 60,
 			baseDelayMs: 1000,
