@@ -29,26 +29,34 @@ export interface OrmEntityMetadata {
 }
 
 /**
- * Creates `import NotionORMBase, { AgentClient, DatabaseClient } from "@haustle/notion-orm/build/src/base"`.
+ * Creates base import from the ORM package.
+ * Only includes `AgentClient` when agents are present.
  */
-function createBaseImportDeclaration(): ts.ImportDeclaration {
+function createBaseImportDeclaration(args: {
+	includeAgentClient: boolean;
+}): ts.ImportDeclaration {
+	const namedImports: ts.ImportSpecifier[] = [
+		ts.factory.createImportSpecifier(
+			false,
+			undefined,
+			ts.factory.createIdentifier("DatabaseClient"),
+		),
+	];
+	if (args.includeAgentClient) {
+		namedImports.unshift(
+			ts.factory.createImportSpecifier(
+				false,
+				undefined,
+				ts.factory.createIdentifier("AgentClient"),
+			),
+		);
+	}
 	return ts.factory.createImportDeclaration(
 		undefined,
 		ts.factory.createImportClause(
 			false,
 			ts.factory.createIdentifier("NotionORMBase"),
-			ts.factory.createNamedImports([
-				ts.factory.createImportSpecifier(
-					false,
-					undefined,
-					ts.factory.createIdentifier("AgentClient"),
-				),
-				ts.factory.createImportSpecifier(
-					false,
-					undefined,
-					ts.factory.createIdentifier("DatabaseClient"),
-				),
-			]),
+			ts.factory.createNamedImports(namedImports),
 		),
 		ts.factory.createStringLiteral(AST_IMPORT_PATHS.ORM_BASE),
 		undefined,
@@ -81,23 +89,31 @@ function createBaseTypeExportDeclaration(): ts.ExportDeclaration {
 
 /**
  * Re-exports base runtime values from the package base module.
+ * Only includes `AgentClient` when agents are present.
  */
-function createBaseValueExportDeclaration(): ts.ExportDeclaration {
-	return ts.factory.createExportDeclaration(
-		undefined,
-		false,
-		ts.factory.createNamedExports([
+function createBaseValueExportDeclaration(args: {
+	includeAgentClient: boolean;
+}): ts.ExportDeclaration {
+	const exports: ts.ExportSpecifier[] = [
+		ts.factory.createExportSpecifier(
+			false,
+			undefined,
+			ts.factory.createIdentifier("DatabaseClient"),
+		),
+	];
+	if (args.includeAgentClient) {
+		exports.unshift(
 			ts.factory.createExportSpecifier(
 				false,
 				undefined,
 				ts.factory.createIdentifier("AgentClient"),
 			),
-			ts.factory.createExportSpecifier(
-				false,
-				undefined,
-				ts.factory.createIdentifier("DatabaseClient"),
-			),
-		]),
+		);
+	}
+	return ts.factory.createExportDeclaration(
+		undefined,
+		false,
+		ts.factory.createNamedExports(exports),
 		ts.factory.createStringLiteral(AST_IMPORT_PATHS.ORM_BASE),
 		undefined,
 	);
@@ -208,6 +224,7 @@ function createRuntimeClassDeclaration(args: {
 	syncCommand: string;
 }): ts.ClassDeclaration {
 	const { databases, agents, syncCommand } = args;
+	const hasAgents = agents.length > 0;
 	const statements: ts.Statement[] = [
 		ts.factory.createExpressionStatement(
 			ts.factory.createCallExpression(ts.factory.createSuper(), undefined, [
@@ -224,19 +241,24 @@ function createRuntimeClassDeclaration(args: {
 				createRegistryInitializer(databases),
 			),
 		),
-		ts.factory.createExpressionStatement(
-			ts.factory.createBinaryExpression(
-				ts.factory.createPropertyAccessExpression(
-					ts.factory.createThis(),
-					ts.factory.createIdentifier("agents"),
-				),
-				ts.factory.createToken(ts.SyntaxKind.EqualsToken),
-				createRegistryInitializer(agents),
-			),
-		),
 	];
 
-	if (databases.length === 0 && agents.length === 0) {
+	if (hasAgents) {
+		statements.push(
+			ts.factory.createExpressionStatement(
+				ts.factory.createBinaryExpression(
+					ts.factory.createPropertyAccessExpression(
+						ts.factory.createThis(),
+						ts.factory.createIdentifier("agents"),
+					),
+					ts.factory.createToken(ts.SyntaxKind.EqualsToken),
+					createRegistryInitializer(agents),
+				),
+			),
+		);
+	}
+
+	if (databases.length === 0) {
 		statements.push(
 			ts.factory.createExpressionStatement(
 				ts.factory.createCallExpression(
@@ -255,6 +277,45 @@ function createRuntimeClassDeclaration(args: {
 		);
 	}
 
+	const classMembers: ts.ClassElement[] = [
+		ts.factory.createPropertyDeclaration(
+			[ts.factory.createModifier(ts.SyntaxKind.PublicKeyword)],
+			ts.factory.createIdentifier("databases"),
+			undefined,
+			createRegistryTypeLiteral(databases),
+			undefined,
+		),
+	];
+
+	if (hasAgents) {
+		classMembers.push(
+			ts.factory.createPropertyDeclaration(
+				[ts.factory.createModifier(ts.SyntaxKind.PublicKeyword)],
+				ts.factory.createIdentifier("agents"),
+				undefined,
+				createRegistryTypeLiteral(agents),
+				undefined,
+			),
+		);
+	}
+
+	classMembers.push(
+		ts.factory.createConstructorDeclaration(
+			undefined,
+			[
+				ts.factory.createParameterDeclaration(
+					undefined,
+					undefined,
+					ts.factory.createIdentifier("config"),
+					undefined,
+					createConfigParamType(),
+					undefined,
+				),
+			],
+			ts.factory.createBlock(statements, true),
+		),
+	);
+
 	return ts.factory.createClassDeclaration(
 		undefined,
 		ts.factory.createIdentifier("NotionORM"),
@@ -267,36 +328,7 @@ function createRuntimeClassDeclaration(args: {
 				),
 			]),
 		],
-		[
-			ts.factory.createPropertyDeclaration(
-				[ts.factory.createModifier(ts.SyntaxKind.PublicKeyword)],
-				ts.factory.createIdentifier("databases"),
-				undefined,
-				createRegistryTypeLiteral(databases),
-				undefined,
-			),
-			ts.factory.createPropertyDeclaration(
-				[ts.factory.createModifier(ts.SyntaxKind.PublicKeyword)],
-				ts.factory.createIdentifier("agents"),
-				undefined,
-				createRegistryTypeLiteral(agents),
-				undefined,
-			),
-			ts.factory.createConstructorDeclaration(
-				undefined,
-				[
-					ts.factory.createParameterDeclaration(
-						undefined,
-						undefined,
-						ts.factory.createIdentifier("config"),
-						undefined,
-						createConfigParamType(),
-						undefined,
-					),
-				],
-				ts.factory.createBlock(statements, true),
-			),
-		],
+		classMembers,
 	);
 }
 
@@ -308,6 +340,47 @@ function createDeclarationClass(args: {
 	agents: OrmEntityMetadata[];
 }): ts.ClassDeclaration {
 	const { databases, agents } = args;
+	const hasAgents = agents.length > 0;
+
+	const classMembers: ts.ClassElement[] = [
+		ts.factory.createPropertyDeclaration(
+			[ts.factory.createModifier(ts.SyntaxKind.PublicKeyword)],
+			ts.factory.createIdentifier("databases"),
+			undefined,
+			createRegistryTypeLiteral(databases),
+			undefined,
+		),
+	];
+
+	if (hasAgents) {
+		classMembers.push(
+			ts.factory.createPropertyDeclaration(
+				[ts.factory.createModifier(ts.SyntaxKind.PublicKeyword)],
+				ts.factory.createIdentifier("agents"),
+				undefined,
+				createRegistryTypeLiteral(agents),
+				undefined,
+			),
+		);
+	}
+
+	classMembers.push(
+		ts.factory.createConstructorDeclaration(
+			undefined,
+			[
+				ts.factory.createParameterDeclaration(
+					undefined,
+					undefined,
+					ts.factory.createIdentifier("config"),
+					undefined,
+					createConfigParamType(),
+					undefined,
+				),
+			],
+			undefined,
+		),
+	);
+
 	return ts.factory.createClassDeclaration(
 		[
 			ts.factory.createModifier(ts.SyntaxKind.ExportKeyword),
@@ -323,36 +396,7 @@ function createDeclarationClass(args: {
 				),
 			]),
 		],
-		[
-			ts.factory.createPropertyDeclaration(
-				[ts.factory.createModifier(ts.SyntaxKind.PublicKeyword)],
-				ts.factory.createIdentifier("databases"),
-				undefined,
-				createRegistryTypeLiteral(databases),
-				undefined,
-			),
-			ts.factory.createPropertyDeclaration(
-				[ts.factory.createModifier(ts.SyntaxKind.PublicKeyword)],
-				ts.factory.createIdentifier("agents"),
-				undefined,
-				createRegistryTypeLiteral(agents),
-				undefined,
-			),
-			ts.factory.createConstructorDeclaration(
-				undefined,
-				[
-					ts.factory.createParameterDeclaration(
-						undefined,
-						undefined,
-						ts.factory.createIdentifier("config"),
-						undefined,
-						createConfigParamType(),
-						undefined,
-					),
-				],
-				undefined,
-			),
-		],
+		classMembers,
 	);
 }
 
@@ -365,14 +409,17 @@ export function buildOrmIndexModuleAst(args: {
 	syncCommand: string;
 }): ts.Statement[] {
 	const { databases, agents, syncCommand } = args;
+	const hasAgents = agents.length > 0;
 	const databaseImports = createEntityImportStatements({
 		entities: databases,
 		pathFactory: AST_IMPORT_PATHS.databaseClass,
 	});
-	const agentImports = createEntityImportStatements({
-		entities: agents,
-		pathFactory: AST_IMPORT_PATHS.agentClass,
-	});
+	const agentImports = hasAgents
+		? createEntityImportStatements({
+				entities: agents,
+				pathFactory: AST_IMPORT_PATHS.agentClass,
+			})
+		: [];
 	const classDeclaration = createRuntimeClassDeclaration({
 		databases,
 		agents,
@@ -381,9 +428,9 @@ export function buildOrmIndexModuleAst(args: {
 	return [
 		...databaseImports,
 		...agentImports,
-		createBaseImportDeclaration(),
+		createBaseImportDeclaration({ includeAgentClient: hasAgents }),
 		createBaseTypeExportDeclaration(),
-		createBaseValueExportDeclaration(),
+		createBaseValueExportDeclaration({ includeAgentClient: hasAgents }),
 		classDeclaration,
 		ts.factory.createExportAssignment(
 			undefined,
@@ -401,22 +448,25 @@ export function buildOrmIndexDeclarationAst(args: {
 	agents: OrmEntityMetadata[];
 }): ts.Statement[] {
 	const { databases, agents } = args;
+	const hasAgents = agents.length > 0;
 	const databaseImports = createEntityImportStatements({
 		entities: databases,
 		pathFactory: AST_IMPORT_PATHS.databaseClass,
 		typeOnly: true,
 	});
-	const agentImports = createEntityImportStatements({
-		entities: agents,
-		pathFactory: AST_IMPORT_PATHS.agentClass,
-		typeOnly: true,
-	});
+	const agentImports = hasAgents
+		? createEntityImportStatements({
+				entities: agents,
+				pathFactory: AST_IMPORT_PATHS.agentClass,
+				typeOnly: true,
+			})
+		: [];
 	return [
 		...databaseImports,
 		...agentImports,
-		createBaseImportDeclaration(),
+		createBaseImportDeclaration({ includeAgentClient: hasAgents }),
 		createBaseTypeExportDeclaration(),
-		createBaseValueExportDeclaration(),
+		createBaseValueExportDeclaration({ includeAgentClient: hasAgents }),
 		createDeclarationClass({ databases, agents }),
 	];
 }

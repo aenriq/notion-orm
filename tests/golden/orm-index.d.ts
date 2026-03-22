@@ -1,9 +1,9 @@
 import type { taskDb } from "../db/taskDb";
 import type { mealAgent } from "../agents/mealAgent";
-import NotionORMBase, { AgentClient, DatabaseClient } from "./base";
+import NotionORMBase, { AgentClient, DatabaseClient } from "@haustle/notion-orm/build/src/base";
 
-export type { NotionConfigType, Query } from "./base";
-export { AgentClient, DatabaseClient } from "./base";
+export type { NotionConfigType, Query } from "@haustle/notion-orm/build/src/base";
+export { AgentClient, DatabaseClient } from "@haustle/notion-orm/build/src/base";
 export default class NotionORM extends NotionORMBase {
 	public databases: {
 		taskDb: ReturnType<typeof taskDb>;
