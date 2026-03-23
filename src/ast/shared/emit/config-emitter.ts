@@ -1,4 +1,4 @@
-import * as babelGenerator from "@babel/generator";
+import generate from "@babel/generator";
 import * as parser from "@babel/parser";
 import * as t from "@babel/types";
 import * as ts from "typescript";
@@ -7,8 +7,6 @@ import {
 	printTsNodes,
 	type TsEmitContext,
 } from "./ts-emit-core";
-
-const generate = babelGenerator.default || babelGenerator;
 
 export type ConfigListKey = "databases" | "agents";
 

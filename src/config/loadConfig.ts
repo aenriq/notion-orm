@@ -28,7 +28,12 @@ function parseNotionConfig(input: unknown): NotionConfigType {
 			.join(", ");
 		throw new Error(`Invalid notion config shape: ${details}`);
 	}
-	return parseResult.data;
+	const data = parseResult.data;
+	return {
+		auth: data.auth,
+		databases: data.databases,
+		agents: data.agents,
+	};
 }
 
 /**
@@ -81,10 +86,12 @@ export async function getNotionConfig(): Promise<NotionConfigType> {
 		// Fallback to environment variable
 		const authFromEnv = process.env.NOTION_AUTH || process.env.NOTION_KEY;
 		if (authFromEnv) {
-			const config = {
+			const databases: string[] = [];
+			const agents: string[] = [];
+			const config: NotionConfigType = {
 				auth: authFromEnv,
-				databases: [],
-				agents: [],
+				databases,
+				agents,
 			};
 			cachedConfig = config;
 			return config;
