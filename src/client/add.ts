@@ -49,7 +49,7 @@ function describeRuntimeValue(value: unknown): string {
 
 function unsupportedAddTypeError(type: SupportedNotionColumnType): Error {
 	return new Error(
-		`${AST_RUNTIME_CONSTANTS.PACKAGE_LOG_PREFIX} add() does not support property type '${type}'. This property type is readable in query responses but cannot be written via add().`,
+		`${AST_RUNTIME_CONSTANTS.PACKAGE_LOG_PREFIX} create() does not support property type '${type}'. This property type is readable in query responses but cannot be written via create().`,
 	);
 }
 
@@ -59,7 +59,7 @@ function invalidAddValueError(args: {
 }): Error {
 	const actual = describeRuntimeValue(args.value);
 	return new Error(
-		`${AST_RUNTIME_CONSTANTS.PACKAGE_LOG_PREFIX} add() received invalid value for property type '${args.type}'. Received ${actual}.`,
+		`${AST_RUNTIME_CONSTANTS.PACKAGE_LOG_PREFIX} create() received invalid value for property type '${args.type}'. Received ${actual}.`,
 	);
 }
 
@@ -273,7 +273,10 @@ const filesCall = (value: unknown): CreatePagePropertyByKey<"files"> => {
 };
 
 type AddPropertyBuilder = (value: unknown) => CreatePagePropertyValue;
-const ADD_PROPERTY_BUILDERS = {
+const ADD_PROPERTY_BUILDERS: Record<
+	SupportedNotionColumnType,
+	AddPropertyBuilder | undefined
+> = {
 	created_by: undefined,
 	last_edited_by: undefined,
 	created_time: undefined,
@@ -293,7 +296,4 @@ const ADD_PROPERTY_BUILDERS = {
 	rich_text: textCall,
 	select: selectCall,
 	unique_id: undefined,
-} as const satisfies Record<
-	SupportedNotionColumnType,
-	AddPropertyBuilder | undefined
->;
+};
