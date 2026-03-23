@@ -11,7 +11,6 @@ export type {
 	FindUniqueArgs,
 	NotionConfigType,
 	PaginateResult,
-	Query,
 	UpdateArgs,
 	UpdateManyArgs,
 	UpsertArgs,

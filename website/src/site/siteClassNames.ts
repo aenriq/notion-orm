@@ -13,19 +13,9 @@ export const siteColorModePandaConditions = {
 	light: `[${SITE_COLOR_MODE_ATTR}=${SITE_COLOR_MODE_LIGHT}] &`,
 } as const;
 
-/** GitHub link chevron in `SiteLayout` — `css()` selectors + JSX. */
+/** GitHub link ↗ in `SiteLayout` — JSX data attribute; hover CSS uses the same strings in `SiteLayout`. */
 export const PAGE_LINK_ARROW_ATTR = "data-page-link-arrow" as const;
 export const PAGE_LINK_ARROW_VALUE = "true" as const;
-
-/**
- * Panda `css()` keys for `pageLinkBaseClass` — literal strings so `css()` keeps narrow types
- * (computed `&:hover …` keys widen to `string` and break Panda’s `Styles` overload).
- * Must stay aligned with `PAGE_LINK_ARROW_ATTR` / `PAGE_LINK_ARROW_VALUE`.
- */
-export const pageLinkArrowPandaCssKeys = {
-	hover: "&:hover [data-page-link-arrow='true']",
-	focusVisible: "&:focus-visible [data-page-link-arrow='true']",
-} as const;
 
 /**
  * Panda `fonts.mono` as a CSS value — use where `css({ fontFamily: "mono" })` is not available

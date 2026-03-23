@@ -172,38 +172,40 @@ function createUserValue(args: {
 }
 
 export function page(
-	properties: Record<string, NotionPropertyValue>,
-): PageObjectResponse {
-	const pageId = createMockUuid();
-	const userId = createMockUuid();
+		properties: Record<string, NotionPropertyValue>,
+		pageId?: string,
+	): PageObjectResponse {
+		const id = pageId ?? createMockUuid();
+		const userId = createMockUuid();
 
-	return {
-		parent: {
-			type: "workspace",
-			workspace: true,
-		},
-		properties,
-		icon: null,
-		cover: null,
-		created_by: {
-			id: userId,
-			object: "user",
-		},
-		last_edited_by: {
-			id: userId,
-			object: "user",
-		},
-		is_locked: false,
-		object: "page",
-		id: pageId,
-		created_time: DEFAULT_TIMESTAMP,
-		last_edited_time: DEFAULT_TIMESTAMP,
-		archived: false,
-		in_trash: false,
-		url: `https://www.notion.so/${pageId}`,
-		public_url: null,
-	};
-}
+		return {
+			parent: {
+				type: "workspace",
+				workspace: true,
+			},
+			properties,
+			icon: null,
+			cover: null,
+			created_by: {
+				id: userId,
+				object: "user",
+			},
+			last_edited_by: {
+				id: userId,
+				object: "user",
+			},
+			is_locked: false,
+			object: "page",
+			id,
+			created_time: DEFAULT_TIMESTAMP,
+			last_edited_time: DEFAULT_TIMESTAMP,
+			archived: false,
+			is_archived: false,
+			in_trash: false,
+			url: `https://www.notion.so/${id}`,
+			public_url: null,
+		};
+	}
 
 export function buildQueryScenario(args: {
 	schema: PropertyNameToColumnMetadataMap;

@@ -89,10 +89,10 @@ bun notion sync
 ```
 
 ## Basic examples
-### Add page to database
+### Create page in a database
 
 ```ts
-await notion.databases.books.add({
+await notion.databases.books.create({
   icon: {
     type: "emoji",
     emoji: "📕",
@@ -112,9 +112,8 @@ await notion.databases.books.add({
 ### Query/filter database
 
 ```ts
-const response = await notion.databases.books.query({
-  // Expected `properties` object is constrained to `books` database schema
-  filter: {
+const books = await notion.databases.books.findMany({
+  where: {
     and: [
       { genre: { contains: "Non-fiction" } },
       { publishDate: { on_or_after: "2026-01-01" } },
@@ -126,6 +125,8 @@ const response = await notion.databases.books.query({
       },
     ],
   },
+  sortBy: [{ property: "bookName", direction: "ascending" }],
+  select: ["bookName", "genre"],
 });
 
 ```
@@ -170,7 +171,7 @@ const agent = notion.agents.yourAgentName; // AgentClient
 
 Generated database and agent names are camelCased and exposed on an instance of `NotionORM`.
 
-- Use `notion.databases.<camelCaseDatabaseName>` for `add()` and `query()`.
+- Use `notion.databases.<camelCaseDatabaseName>` for typed CRUD + query operations (`findMany`, `findFirst`, `findUnique`, `create`, `update`, `delete`, and more).
 - Use `notion.agents.<camelCaseAgentName>` for `chat()`, `chatStream()`, thread helpers, and history APIs.
 - For full method signatures and response shapes, see [API Reference](#api-reference).
 
@@ -181,7 +182,7 @@ Generated database and agent names are camelCased and exposed on an instance of 
 Only title is required by Notion for a minimal page.
 
 ```ts
-await notion.databases.books.add({
+await notion.databases.books.create({
   properties: {
     bookName: "Raphael, Painter in Rome: a Novel", // title
     author: "Stephanie Storey", // rich_text
@@ -219,15 +220,15 @@ Query filters are typed by your generated schema, including nested compound filt
 Example single filter:
 
 ```ts
-await notion.databases.books.query({
-  filter: {
+await notion.databases.books.findMany({
+  where: {
     genre: {
       contains: "Sci-Fi",
     },
   },
-  sort: [
+  sortBy: [
     {
-      property: "Book Name",
+      property: "bookName",
       direction: "ascending",
     },
   ],
@@ -237,8 +238,8 @@ await notion.databases.books.query({
 Example compound filters:
 
 ```ts
-await notion.databases.books.query({
-  filter: {
+await notion.databases.books.findMany({
+  where: {
     and: [
       {
         or: [
@@ -252,39 +253,26 @@ await notion.databases.books.query({
 });
 ```
 
-You can request the full Notion payload by setting `includeRawResponse: true`:
+Projection is available via `select` and `omit` string arrays:
 
 ```ts
-const response = await notion.databases.books.query({
-  filter: {
+const response = await notion.databases.books.findMany({
+  where: {
     genre: { contains: "Sci-Fi" },
   },
-  includeRawResponse: true,
+  select: ["bookName", "genre"],
 });
-
-response.rawResponse; // strongly typed full Notion query response
 ```
 
-Successful query shape:
+Successful response shape:
 
 ```ts
-{
-  results: [
-    {
-      bookName: "The Dream Machine",
-      genre: ["Non-fiction"],
-      numberOfPages: 460,
-    },
-  ],
-}
-```
-
-When `includeRawResponse: true` is provided, the response additionally includes:
-
-```ts
-{
-  rawResponse: { /* full Notion API response */ },
-}
+[
+  {
+    bookName: "The Dream Machine",
+    genre: ["Non-fiction"],
+  },
+]
 ```
 
 ### Agents
@@ -363,9 +351,10 @@ See [API Reference](#api-reference) for full method signatures, `ThreadInfo` sha
 | ---------------------------- | -------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | `id`                         | property | Notion data source ID used by this client instance            | -                                                                                      |
 | `name`                       | property | Human-readable database name captured during generation       | -                                                                                      |
-| `add({ properties, icon? })` | method   | Creates a page in the database using typed `properties`       | [Adding](#adding)                                                                      |
+| `findMany({ where?, sortBy?, size?, select?, omit?, stream?, after? })` | method   | Queries database pages with typed filters, projection, pagination, or streaming | [Querying](#querying), [Supported database properties](#supported-database-properties) |
+| `findFirst({ where?, sortBy?, select?, omit? })` | method | Returns the first matching row or `null` | [Querying](#querying) |
+| `findUnique({ where: { id }, select?, omit? })` | method | Fetches a row by page ID with optional projection | [Querying](#querying) |
 | `create({ properties, icon?, cover?, markdown? })` | method | Creates a page with optional [markdown body content](https://developers.notion.com/guides/data-apis/working-with-markdown-content#block-type-support) | [Adding](#adding), [Markdown](#adding-page-content-with-markdown) |
-| `query({ filter?, sort?, includeRawResponse? })`  | method   | Queries database pages and returns `{ results }` by default (`rawResponse` is included when `includeRawResponse: true`) | [Querying](#querying), [Supported database properties](#supported-database-properties) |
 
 ## Agent methods
 

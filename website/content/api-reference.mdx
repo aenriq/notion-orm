@@ -53,8 +53,6 @@ const agent = notion.agents.yourAgentName;
 | `delete({ where: { id } })` | Archives a single page by ID |
 | `deleteMany({ where })` | Archives all pages matching a filter |
 
-The legacy `add()` and `query()` methods are still available but deprecated. Use `create()` and `findMany()` instead.
-
 ---
 
 ### `findMany`
@@ -74,10 +72,10 @@ Queries the database with optional filtering, sorting, projection, pagination, a
 | Property | Type | Required | Description |
 | -------- | ---- | -------- | ----------- |
 | `where` | `QueryFilter` | no | Typed filter object (single or compound `and`/`or`) |
-| `sortBy` | `QueryDataSourceParameters["sorts"]` | no | Array of sort descriptors |
+| `sortBy` | `QuerySort<ColumnTypes>` | no | Array of schema-key sort descriptors (or timestamp sorts) |
 | `size` | `number` | no | Page size limit |
-| `select` | `{ [key]: true }` | no | Include only specified fields |
-| `omit` | `{ [key]: true }` | no | Exclude specified fields |
+| `select` | `readonly (keyof Schema & string)[]` | no | Include only specified fields |
+| `omit` | `readonly (keyof Schema & string)[]` | no | Exclude specified fields |
 | `stream` | `number` | no | Batch size for async iteration (mutually exclusive with `after`) |
 | `after` | `string \| null` | no | Cursor for pagination (mutually exclusive with `stream`) |
 
@@ -90,8 +88,8 @@ const allBooks = await db.findMany();
 // Filtered + sorted + projected
 const recent = await db.findMany({
   where: { publishDate: { on_or_after: "2025-01-01" } },
-  sortBy: [{ property: "Publish Date", direction: "descending" }],
-  select: { bookName: true, publishDate: true },
+  sortBy: [{ property: "publishDate", direction: "descending" }],
+  select: ["bookName", "publishDate"],
   size: 20,
 });
 
@@ -124,10 +122,13 @@ const book = await db.findFirst({
 
 ### `findUnique`
 
-Retrieves a single page by its Notion page ID. Returns `null` for missing or partial pages.
+Retrieves a single page by its Notion page ID. Returns `null` for missing or partial pages. Supports `select` / `omit` projection with the same semantics as `findMany`.
 
 ```ts
-const page = await db.findUnique({ where: { id: "page-id-here" } });
+const page = await db.findUnique({
+  where: { id: "page-id-here" },
+  select: ["bookName", "status"],
+});
 ```
 
 ---

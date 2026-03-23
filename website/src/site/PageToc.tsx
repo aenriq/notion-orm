@@ -1,7 +1,18 @@
 "use client";
 
-import { type FC, useEffect, useState } from "react";
+import { type FC, useCallback, useEffect, useMemo, useState } from "react";
 import { css, cx } from "../styled-system/css";
+import {
+	BOTTOM_OF_PAGE_THRESHOLD,
+	getActiveHeadingIdFromTargets,
+	getMissingTocTargetIds,
+	getTocNavigationState,
+	getTocTargetOrderMismatch,
+	groupTocIntoSections,
+	HEADING_ACTIVATION_OFFSET,
+	sectionShouldBeExpanded,
+	updateTocNavigationState,
+} from "./toc";
 import type { TocEntry } from "./types";
 
 interface PageTocProps {
@@ -62,13 +73,14 @@ const tocSectionBlockClass = css({
 	gap: "1",
 });
 
-/** Grid row animation: 0fr → 1fr interpolates to natural height without fixed max-height. */
 const tocNestedRevealClass = css({
 	display: "grid",
 	gridTemplateRows: "0fr",
-	transitionProperty: "grid-template-rows",
+	opacity: 0,
+	transitionProperty: "grid-template-rows, opacity",
 	transitionDuration: "320ms",
 	transitionTimingFunction: "cubic-bezier(0.33, 1, 0.68, 1)",
+	pointerEvents: "none",
 	"@media (prefers-reduced-motion: reduce)": {
 		transitionDuration: "0.01ms",
 	},
@@ -76,6 +88,8 @@ const tocNestedRevealClass = css({
 
 const tocNestedRevealExpandedClass = css({
 	gridTemplateRows: "1fr",
+	opacity: 1,
+	pointerEvents: "auto",
 });
 
 const tocNestedRevealInnerClass = css({
@@ -85,123 +99,165 @@ const tocNestedRevealInnerClass = css({
 
 const tocNestedListClass = css({
 	display: "flex",
+	flexDirection: "row",
+	alignItems: "stretch",
+	gap: "3",
+	marginLeft: "1",
+	marginTop: "0.5",
+	minW: "0",
+});
+
+const tocNestedAccentBarClass = css({
+	flexShrink: 0,
+	w: "4px",
+	alignSelf: "stretch",
+	bg: "border",
+	borderRadius: "2px",
+});
+
+const tocNestedLinksColumnClass = css({
+	display: "flex",
 	flexDirection: "column",
 	gap: "0.5",
-	borderLeftWidth: "2px",
-	borderLeftStyle: "solid",
-	borderLeftColor: "border",
-	marginLeft: "1",
-	paddingLeft: "3",
-	marginTop: "0.5",
+	flex: "1",
+	minW: "0",
 });
 
 const tocNestedLinkH4IndentClass = css({
 	pl: "2",
 });
 
-function groupTocIntoSections(toc: TocEntry[]): Array<{
-	root: TocEntry;
-	children: TocEntry[];
-}> {
-	const sections: Array<{ root: TocEntry; children: TocEntry[] }> = [];
-	let current: { root: TocEntry; children: TocEntry[] } | null = null;
-
-	for (const entry of toc) {
-		if (entry.depth === 2) {
-			current = { root: entry, children: [] };
-			sections.push(current);
-		} else if (entry.depth > 2 && current) {
-			current.children.push(entry);
-		}
+function compareElementsInDocumentOrder(
+	left: HTMLElement,
+	right: HTMLElement,
+): number {
+	if (left === right) {
+		return 0;
 	}
 
-	if (sections.length === 0 && toc.length > 0) {
-		return toc.map((entry): { root: TocEntry; children: TocEntry[] } => ({
-			root: entry,
-			children: [],
-		}));
+	const position = left.compareDocumentPosition(right);
+	if (position & Node.DOCUMENT_POSITION_FOLLOWING) {
+		return -1;
 	}
-
-	return sections;
+	if (position & Node.DOCUMENT_POSITION_PRECEDING) {
+		return 1;
+	}
+	return 0;
 }
 
-function sectionContainsActiveId(
-	section: { root: TocEntry; children: TocEntry[] },
-	activeId: string | null,
-): boolean {
-	if (activeId === null) {
-		return false;
-	}
-	if (section.root.id === activeId) {
-		return true;
-	}
-	return section.children.some((c) => c.id === activeId);
+function getHeadingElementsInDomOrder(toc: TocEntry[]): HTMLElement[] {
+	return toc
+		.map((entry) => document.getElementById(entry.id))
+		.filter((heading): heading is HTMLElement => heading instanceof HTMLElement)
+		.sort(compareElementsInDocumentOrder);
 }
-
-const HEADING_ACTIVATION_OFFSET = 140;
-const BOTTOM_OF_PAGE_THRESHOLD = 8;
 
 function getActiveHeadingId(toc: TocEntry[]): string | null {
-	const headings = toc
-		.map((entry) => document.getElementById(entry.id))
-		.filter(
-			(heading): heading is HTMLElement => heading instanceof HTMLElement,
-		);
-
-	if (headings.length === 0) {
-		return null;
-	}
+	const headings = getHeadingElementsInDomOrder(toc);
 
 	const scrollBottom = window.scrollY + window.innerHeight;
 	const documentHeight = document.documentElement.scrollHeight;
 
-	if (scrollBottom >= documentHeight - BOTTOM_OF_PAGE_THRESHOLD) {
-		return headings.at(-1)?.id ?? null;
-	}
-
-	let activeId = headings[0].id;
-
-	for (const heading of headings) {
-		if (heading.getBoundingClientRect().top <= HEADING_ACTIVATION_OFFSET) {
-			activeId = heading.id;
-			continue;
-		}
-
-		break;
-	}
-
-	return activeId;
+	return getActiveHeadingIdFromTargets({
+		headings: headings.map((heading) => ({
+			id: heading.id,
+			top: heading.getBoundingClientRect().top,
+		})),
+		isAtBottom: scrollBottom >= documentHeight - BOTTOM_OF_PAGE_THRESHOLD,
+		activationOffset: HEADING_ACTIVATION_OFFSET,
+	});
 }
 
 export const PageToc: FC<PageTocProps> = ({ toc, className }) => {
-	const [activeId, setActiveId] = useState<string | null>(toc[0]?.id ?? null);
+	const sections = useMemo(() => groupTocIntoSections(toc), [toc]);
+	const [navigationState, setNavigationState] = useState(() =>
+		getTocNavigationState({
+			sections,
+			entryId: toc[0]?.id ?? null,
+		}),
+	);
+	const { activeId, revealedRootId } = navigationState;
+
+	useEffect(() => {
+		setNavigationState(
+			getTocNavigationState({
+				sections,
+				entryId: toc[0]?.id ?? null,
+			}),
+		);
+	}, [sections, toc]);
+
+	const applyTocEntryId = useCallback(
+		(entryId: string | null) => {
+			setNavigationState((currentState) =>
+				updateTocNavigationState({
+					sections,
+					currentState,
+					entryId,
+				}),
+			);
+		},
+		[sections],
+	);
+
+	const navigateToTocEntry = useCallback(
+		(
+			id: string,
+			options: {
+				scroll: boolean;
+				updateHash: boolean;
+			},
+		): boolean => {
+			if (!id || !toc.some((entry) => entry.id === id)) {
+				return false;
+			}
+
+			if (options.scroll) {
+				document.getElementById(id)?.scrollIntoView({
+					behavior: "auto",
+					block: "start",
+				});
+			}
+			if (options.updateHash) {
+				window.history.replaceState(null, "", `#${id}`);
+			}
+			applyTocEntryId(id);
+			return true;
+		},
+		[applyTocEntryId, toc],
+	);
 
 	useEffect(() => {
 		if (toc.length === 0) {
 			return;
 		}
 
-		const updateActiveHeading = () => {
-			const nextActiveId = getActiveHeadingId(toc);
-
-			if (nextActiveId) {
-				setActiveId((currentActiveId) =>
-					currentActiveId === nextActiveId ? currentActiveId : nextActiveId,
+		if (process.env.NODE_ENV !== "production") {
+			const missingIds = getMissingTocTargetIds({
+				toc,
+				getElementById: (id) => document.getElementById(id),
+			});
+			if (missingIds.length > 0) {
+				throw new Error(
+					`[toc] Missing heading targets for ids: ${missingIds.join(", ")}`,
 				);
 			}
-		};
 
-		const scrollToHashIfInToc = (id: string): boolean => {
-			if (!id || !toc.some((e) => e.id === id)) {
-				return false;
-			}
-
-			document.getElementById(id)?.scrollIntoView({
-				behavior: "auto",
-				block: "start",
+			const orderMismatch = getTocTargetOrderMismatch({
+				toc,
+				targetIdsInDomOrder: getHeadingElementsInDomOrder(toc).map(
+					(heading) => heading.id,
+				),
 			});
-			setActiveId(id);
-			return true;
+			if (orderMismatch) {
+				throw new Error(
+					`[toc] Heading order mismatch. expected: ${orderMismatch.expectedIds.join(", ")}; actual: ${orderMismatch.actualIds.join(", ")}`,
+				);
+			}
+		}
+
+		const updateActiveHeading = () => {
+			applyTocEntryId(getActiveHeadingId(toc));
 		};
 
 		const hashId = window.location.hash.slice(1);
@@ -209,7 +265,10 @@ export const PageToc: FC<PageTocProps> = ({ toc, className }) => {
 
 		if (hashMatchesToc) {
 			window.requestAnimationFrame(() => {
-				scrollToHashIfInToc(hashId);
+				navigateToTocEntry(hashId, {
+					scroll: true,
+					updateHash: false,
+				});
 			});
 		} else {
 			updateActiveHeading();
@@ -228,7 +287,12 @@ export const PageToc: FC<PageTocProps> = ({ toc, className }) => {
 		};
 
 		const onHashChange = () => {
-			if (!scrollToHashIfInToc(window.location.hash.slice(1))) {
+			if (
+				!navigateToTocEntry(window.location.hash.slice(1), {
+					scroll: true,
+					updateHash: false,
+				})
+			) {
 				scheduleUpdate();
 			}
 		};
@@ -246,34 +310,22 @@ export const PageToc: FC<PageTocProps> = ({ toc, className }) => {
 				window.cancelAnimationFrame(rafId);
 			}
 		};
-	}, [toc]);
+	}, [applyTocEntryId, navigateToTocEntry, toc]);
 
 	if (toc.length === 0) {
 		return null;
 	}
-
-	const sections = groupTocIntoSections(toc);
-
-	const scrollToTocTarget = (id: string) => {
-		const el = document.getElementById(id);
-		if (el) {
-			el.scrollIntoView({
-				behavior: "auto",
-				block: "start",
-			});
-		}
-		window.history.replaceState(null, "", `#${id}`);
-		setActiveId(id);
-	};
 
 	return (
 		<div className={cx(tocRootClass, className)}>
 			<span className={tocHeadingLabelClass}>On page</span>
 			<nav className={tocLinksCardClass} aria-label="Table of contents">
 				{sections.map((section) => {
-					const showNested =
-						section.children.length > 0 &&
-						sectionContainsActiveId(section, activeId);
+					const showNested = sectionShouldBeExpanded({
+						section,
+						activeId,
+						revealedRootId,
+					});
 					const rootActive = section.root.id === activeId;
 
 					return (
@@ -287,7 +339,10 @@ export const PageToc: FC<PageTocProps> = ({ toc, className }) => {
 								aria-current={rootActive ? "location" : undefined}
 								onClick={(e) => {
 									e.preventDefault();
-									scrollToTocTarget(section.root.id);
+									navigateToTocEntry(section.root.id, {
+										scroll: true,
+										updateHash: true,
+									});
 								}}>
 								{section.root.label}
 							</a>
@@ -297,31 +352,40 @@ export const PageToc: FC<PageTocProps> = ({ toc, className }) => {
 										tocNestedRevealClass,
 										showNested && tocNestedRevealExpandedClass,
 									)}
-									inert={showNested ? undefined : true}>
+									aria-hidden={!showNested}>
 									<div className={tocNestedRevealInnerClass}>
 										<div className={tocNestedListClass}>
-											{section.children.map((child) => {
-												const childActive = child.id === activeId;
-												return (
-													<a
-														key={child.id}
-														href={`#${child.id}`}
-														className={cx(
-															tocLinkBaseClass,
-															childActive
-																? tocLinkActiveClass
-																: tocLinkInactiveClass,
-															child.depth >= 4 && tocNestedLinkH4IndentClass,
-														)}
-														aria-current={childActive ? "location" : undefined}
-														onClick={(e) => {
-															e.preventDefault();
-															scrollToTocTarget(child.id);
-														}}>
-														{child.label}
-													</a>
-												);
-											})}
+											<div className={tocNestedAccentBarClass} aria-hidden />
+											<div className={tocNestedLinksColumnClass}>
+												{section.children.map((child) => {
+													const childActive = child.id === activeId;
+													return (
+														<a
+															key={child.id}
+															href={`#${child.id}`}
+															className={cx(
+																tocLinkBaseClass,
+																childActive
+																	? tocLinkActiveClass
+																	: tocLinkInactiveClass,
+																child.depth >= 4 && tocNestedLinkH4IndentClass,
+															)}
+															aria-current={
+																childActive ? "location" : undefined
+															}
+															tabIndex={showNested ? undefined : -1}
+															onClick={(e) => {
+																e.preventDefault();
+																navigateToTocEntry(child.id, {
+																	scroll: true,
+																	updateHash: true,
+																});
+															}}>
+															{child.label}
+														</a>
+													);
+												})}
+											</div>
 										</div>
 									</div>
 								</div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { css, cx } from "../styled-system/css";
 
 const VIEWPORT_W = 25;
@@ -150,32 +150,18 @@ const wrapperClass = css({
 	mt: "2",
 });
 
-const fixedHeroShellClass = css({
-	position: "fixed",
+const fixedHeroStickyClass = css({
+	position: "sticky",
+	top: 0,
 	zIndex: 0,
 	pointerEvents: "none",
 	overflow: "hidden",
-	minH: { base: HERO_SPACER_MINH_MOBILE, lg: "auto" },
-	h: { base: HERO_SPACER_MINH_MOBILE, lg: "auto" },
-});
-
-const fixedHeroInnerClass = css({
-	display: "flex",
-	justifyContent: "center",
-	alignItems: "center",
 	w: "full",
 	minW: "0",
-	h: "full",
-	minH: "0",
-});
-
-const fixedHeroSpacerClass = css({
-	w: "full",
 	minH: { base: HERO_SPACER_MINH_MOBILE, lg: HERO_SPACER_MINH },
 	display: "flex",
 	justifyContent: "center",
 	alignItems: "center",
-	overflow: "hidden",
 });
 
 const preClass = css({
@@ -216,58 +202,6 @@ export function NotionCubeLogo({
 	}: NotionCubeLogoProps) {
 		const [frame, setFrame] = useState(0);
 		const [reduceMotion, setReduceMotion] = useState(false);
-		const heroSpacerRef = useRef<HTMLDivElement>(null);
-		const [heroBand, setHeroBand] = useState<{
-			top: number;
-			height: number;
-			left: number;
-			width: number;
-		} | null>(null);
-
-		useLayoutEffect(() => {
-			if (!fixedHero) {
-				return;
-			}
-			const el = heroSpacerRef.current;
-			if (!el) {
-				return;
-			}
-			let rafId = 0;
-			const sync = () => {
-				const r = el.getBoundingClientRect();
-				setHeroBand((prev) => {
-					const next = {
-						top: Math.max(0, r.top),
-						height: r.height,
-						left: r.left,
-						width: r.width,
-					};
-					return prev &&
-						prev.top === next.top &&
-						prev.height === next.height &&
-						prev.left === next.left &&
-						prev.width === next.width
-						? prev
-						: next;
-				});
-			};
-			const syncNextFrame = () => {
-				window.cancelAnimationFrame(rafId);
-				rafId = window.requestAnimationFrame(sync);
-			};
-			sync();
-			const ro = new ResizeObserver(syncNextFrame);
-			ro.observe(el);
-			window.addEventListener("resize", syncNextFrame);
-			window.addEventListener("load", syncNextFrame);
-			void document.fonts.ready.then(syncNextFrame);
-			return () => {
-				ro.disconnect();
-				window.cancelAnimationFrame(rafId);
-				window.removeEventListener("resize", syncNextFrame);
-				window.removeEventListener("load", syncNextFrame);
-			};
-		}, [fixedHero]);
 
 		useEffect(() => {
 			if (!animate) {
@@ -306,27 +240,9 @@ export function NotionCubeLogo({
 
 		if (fixedHero) {
 			return (
-				<>
-					<div
-						ref={heroSpacerRef}
-						className={fixedHeroSpacerClass}
-						aria-hidden="true">
-						{heroBand ? null : pre}
-					</div>
-					{heroBand ? (
-						<div
-							className={fixedHeroShellClass}
-							aria-hidden="true"
-							style={{
-								top: heroBand.top,
-								left: heroBand.left,
-								width: heroBand.width,
-								height: heroBand.height,
-							}}>
-							<div className={fixedHeroInnerClass}>{pre}</div>
-						</div>
-					) : null}
-				</>
+				<div className={fixedHeroStickyClass} aria-hidden="true">
+					{pre}
+				</div>
 			);
 		}
 

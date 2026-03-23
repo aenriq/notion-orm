@@ -22,7 +22,7 @@ import {
 	indentOnInput,
 } from "@codemirror/language";
 import { linter, lintGutter, lintKeymap } from "@codemirror/lint";
-import { EditorState } from "@codemirror/state";
+import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import {
 	drawSelection,
 	dropCursor,
@@ -45,8 +45,11 @@ import {
 	cmDemoSiteClassNames as cm,
 	cmDemoTooltipQuerySelectorList,
 	DEMO_PLAYGROUND_RESET_BUTTON_CLASS,
+	SITE_COLOR_MODE_ATTR,
+	SITE_COLOR_MODE_DARK,
 	siteMonoFontFamilyCssVar,
 } from "../siteClassNames";
+import { cmOneDarkTheme } from "./cmOneDarkTheme";
 import { ideLikeTsAutocomplete } from "./ideLikeTsAutocomplete";
 import {
 	agentEntryFile,
@@ -57,6 +60,8 @@ import {
 type TypeScriptApi = typeof import("typescript");
 
 const TS_LINTER_DIAGNOSTIC_CODES_IGNORE = [1375, 1378, 2792, 2821] as const;
+const demoSyntaxThemeCompartment = new Compartment();
+const demoEditorChromeCompartment = new Compartment();
 
 function typeScriptLinterExtension() {
 	return linter(
@@ -70,8 +75,8 @@ function typeScriptLinterExtension() {
 				: [];
 		},
 		{
-			// @ts-expect-error: null means “no tooltip” per runtime; types don’t allow it.
-			tooltipFilter: () => null,
+			// Empty set => no lint hover tooltip (see @codemirror/lint LintConfig.tooltipFilter).
+			tooltipFilter: () => [],
 		},
 	);
 }
@@ -230,22 +235,44 @@ export namespace z {
 }
 `;
 
-const cmPopupCardLight = {
+const cmPopupCardStyles = {
 	maxWidth: "400px",
-	backgroundColor: "#ffffff",
-	color: "#171717",
-	border: "1px solid rgba(0, 0, 0, 0.08)",
+	backgroundColor: "var(--colors-surface)",
+	color: "var(--colors-text)",
+	border: "1px solid var(--colors-border)",
 	borderRadius: "10px",
-	boxShadow: "0 4px 24px rgba(0, 0, 0, 0.07), 0 1px 3px rgba(0, 0, 0, 0.05)",
+	boxShadow: "var(--shadows-2xl)",
 } as const;
 
-/** `content:` URL for `@codemirror/lint` gutter markers (light demo theme). */
+const cmLintMarkerPalette = {
+	light: {
+		error:
+			'<circle cx="20" cy="20" r="15" fill="#fecdd3" stroke="#fb7185" stroke-width="5"/>',
+		warning:
+			'<path fill="#fef9c3" stroke="#fde047" stroke-width="5" stroke-linejoin="round" d="M20 6L37 35L3 35Z"/>',
+		info: '<path fill="#e0e7ff" stroke="#a5b4fc" stroke-width="5" stroke-linejoin="round" d="M5 5L35 5L35 35L5 35Z"/>',
+	},
+	dark: {
+		error:
+			'<circle cx="20" cy="20" r="15" fill="#3d1f26" stroke="#e06c75" stroke-width="5"/>',
+		warning:
+			'<path fill="#3d311f" stroke="#e5c07b" stroke-width="5" stroke-linejoin="round" d="M20 6L37 35L3 35Z"/>',
+		info: '<path fill="#1f3342" stroke="#61afef" stroke-width="5" stroke-linejoin="round" d="M5 5L35 5L35 35L5 35Z"/>',
+	},
+} as const;
+
 function cmLintMarkerSvg(pathInner: string): string {
 	return `url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">${encodeURIComponent(pathInner)}</svg>')`;
 }
 
-const editorTheme = EditorView.theme(
-	{
+function getDemoSyntaxTheme(isDark: boolean): Extension {
+	return isDark ? cmOneDarkTheme : clouds;
+}
+
+function createEditorTheme(isDark: boolean): Extension {
+	const lintPalette = isDark ? cmLintMarkerPalette.dark : cmLintMarkerPalette.light;
+
+	return EditorView.theme({
 		"&": {
 			fontSize: "14px",
 		},
@@ -276,22 +303,16 @@ const editorTheme = EditorView.theme(
 			fontSize: "14px",
 		},
 		[`.${cm.lintMarkerError}`]: {
-			content: cmLintMarkerSvg(
-				'<circle cx="20" cy="20" r="15" fill="#fecdd3" stroke="#fb7185" stroke-width="5"/>',
-			),
+			content: cmLintMarkerSvg(lintPalette.error),
 		},
 		[`.${cm.lintMarkerWarning}`]: {
-			content: cmLintMarkerSvg(
-				'<path fill="#fef9c3" stroke="#fde047" stroke-width="5" stroke-linejoin="round" d="M20 6L37 35L3 35Z"/>',
-			),
+			content: cmLintMarkerSvg(lintPalette.warning),
 		},
 		[`.${cm.lintMarkerInfo}`]: {
-			content: cmLintMarkerSvg(
-				'<path fill="#e0e7ff" stroke="#a5b4fc" stroke-width="5" stroke-linejoin="round" d="M5 5L35 5L35 35L5 35Z"/>',
-			),
+			content: cmLintMarkerSvg(lintPalette.info),
 		},
 		[`.${cm.tooltip}`]: {
-			...cmPopupCardLight,
+			...cmPopupCardStyles,
 			padding: "10px 12px",
 			fontSize: "12px",
 			lineHeight: "1.55",
@@ -311,7 +332,7 @@ const editorTheme = EditorView.theme(
 			overflowY: "auto",
 		},
 		[`.${cm.tooltipSection}:not(:first-child)`]: {
-			borderTop: "1px solid rgba(0, 0, 0, 0.06)",
+			borderTop: "1px solid var(--colors-border)",
 			paddingTop: "8px",
 			marginTop: "8px",
 		},
@@ -321,35 +342,36 @@ const editorTheme = EditorView.theme(
 		[`.${cm.tooltip}.${cm.tooltipAutocomplete} > ul`]: {
 			maxWidth: "min(400px, 95vw)",
 			borderRadius: "6px",
+			backgroundColor: "var(--colors-surface)",
 		},
 		[`.${cm.tooltip}.${cm.tooltipAutocomplete} ul li[aria-selected]`]: {
-			background: "rgba(37, 99, 235, 0.12)",
-			color: "#1e3a8a",
+			background: "color-mix(in srgb, var(--colors-accent) 18%, transparent)",
+			color: "var(--colors-text)",
 		},
 		[`.${cm.tooltip}.${cm.tooltipAutocompleteDisabled} ul li[aria-selected]`]: {
-			background: "rgba(113, 113, 122, 0.2)",
-			color: "#3f3f46",
+			background: "color-mix(in srgb, var(--colors-muted) 24%, transparent)",
+			color: "var(--colors-muted)",
 		},
 		[`.${cm.tooltip}.${cm.completionInfo}`]: {
-			...cmPopupCardLight,
+			...cmPopupCardStyles,
 			padding: "10px 12px",
 			fontSize: "12px",
 			lineHeight: "1.55",
 		},
 		[`.${cm.tooltipAbove} .${cm.tooltipArrow}`]: {
 			"&:before": {
-				borderTopColor: "rgba(0, 0, 0, 0.12)",
+				borderTopColor: "var(--colors-border)",
 			},
 			"&:after": {
-				borderTopColor: "#ffffff",
+				borderTopColor: "var(--colors-surface)",
 			},
 		},
 		[`.${cm.tooltipBelow} .${cm.tooltipArrow}`]: {
 			"&:before": {
-				borderBottomColor: "rgba(0, 0, 0, 0.12)",
+				borderBottomColor: "var(--colors-border)",
 			},
 			"&:after": {
-				borderBottomColor: "#ffffff",
+				borderBottomColor: "var(--colors-surface)",
 			},
 		},
 		[`@keyframes ${cm.keyframeTooltipIn}`]: {
@@ -377,9 +399,24 @@ const editorTheme = EditorView.theme(
 		"&:not(.cm-focused) .cm-activeLineGutter": {
 			backgroundColor: "transparent",
 		},
-	},
-	{ dark: false },
-);
+	});
+}
+
+function isDarkSiteColorMode(): boolean {
+	return (
+		document.documentElement.getAttribute(SITE_COLOR_MODE_ATTR) ===
+		SITE_COLOR_MODE_DARK
+	);
+}
+
+function reconfigureDemoThemes(view: EditorView, isDark: boolean): void {
+	view.dispatch({
+		effects: [
+			demoSyntaxThemeCompartment.reconfigure(getDemoSyntaxTheme(isDark)),
+			demoEditorChromeCompartment.reconfigure(createEditorTheme(isDark)),
+		],
+	});
+}
 
 const TOOLTIP_LEAVE_MS = 260;
 
@@ -649,6 +686,7 @@ async function createTypeScriptEnvironment() {
 function createEditorExtensions(
 	env: VirtualTypeScriptEnvironment,
 	editorPath: string,
+	isDark: boolean,
 ) {
 	return [
 		lineNumbers(),
@@ -658,14 +696,14 @@ function createEditorExtensions(
 		drawSelection(),
 		dropCursor(),
 		indentOnInput(),
-		clouds,
+		demoSyntaxThemeCompartment.of(getDemoSyntaxTheme(isDark)),
 		bracketMatching(),
 		closeBrackets(),
 		foldGutter(),
 		lintGutter(),
 		javascript({ typescript: true }),
 		EditorState.tabSize.of(2),
-		editorTheme,
+		demoEditorChromeCompartment.of(createEditorTheme(isDark)),
 		demoTooltipMotionPlugin,
 		keymap.of([
 			indentWithTab,
@@ -718,6 +756,7 @@ export function DemoPlayground() {
 
 	useEffect(() => {
 		let disposed = false;
+		let colorModeObserver: MutationObserver | null = null;
 
 		async function mount() {
 			const databasesContainer = databasesContainerRef.current;
@@ -735,11 +774,12 @@ export function DemoPlayground() {
 
 				const databasesPath = toVirtualPath(databaseEntryFile);
 				const agentsPath = toVirtualPath(agentEntryFile);
+				let isDark = isDarkSiteColorMode();
 
 				const databasesView = new EditorView({
 					state: EditorState.create({
 						doc: playgroundFiles[databaseEntryFile],
-						extensions: createEditorExtensions(env, databasesPath),
+						extensions: createEditorExtensions(env, databasesPath, isDark),
 					}),
 					parent: databasesContainer,
 				});
@@ -747,9 +787,23 @@ export function DemoPlayground() {
 				const agentsView = new EditorView({
 					state: EditorState.create({
 						doc: playgroundFiles[agentEntryFile],
-						extensions: createEditorExtensions(env, agentsPath),
+						extensions: createEditorExtensions(env, agentsPath, isDark),
 					}),
 					parent: agentsContainer,
+				});
+
+				colorModeObserver = new MutationObserver(() => {
+					const nextIsDark = isDarkSiteColorMode();
+					if (nextIsDark === isDark) {
+						return;
+					}
+					isDark = nextIsDark;
+					reconfigureDemoThemes(databasesView, nextIsDark);
+					reconfigureDemoThemes(agentsView, nextIsDark);
+				});
+				colorModeObserver.observe(document.documentElement, {
+					attributes: true,
+					attributeFilter: [SITE_COLOR_MODE_ATTR],
 				});
 
 				databasesViewRef.current = databasesView;
@@ -777,6 +831,7 @@ export function DemoPlayground() {
 
 		return () => {
 			disposed = true;
+			colorModeObserver?.disconnect();
 			databasesViewRef.current?.destroy();
 			agentsViewRef.current?.destroy();
 			databasesViewRef.current = null;

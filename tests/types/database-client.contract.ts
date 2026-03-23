@@ -1,5 +1,5 @@
-import type { QueryResponseWithRawResponse } from "../../src/client/queryTypes";
-import { DatabaseClient } from "../../src/client/DatabaseClient";
+import type { DatabaseClient } from "../../src/client/DatabaseClient";
+import type { PaginateResult } from "../../src/client/queryTypes";
 import type { Equal, Expect } from "./helpers/assert";
 
 type Schema = {
@@ -14,16 +14,50 @@ type ColumnTypes = {
 
 declare const client: DatabaseClient<Schema, ColumnTypes>;
 
-const withRawPromise = client.query({ includeRawResponse: true });
-const withoutRawPromise = client.query({});
+const allRowsPromise = client.findMany();
+const selectedRowsPromise = client.findMany({
+	select: ["shopName"] as const,
+});
+const omittedRowsPromise = client.findMany({
+	omit: ["rating"] as const,
+});
+const firstSelectedPromise = client.findFirst({
+	select: ["shopName"] as const,
+});
+const uniqueOmittedPromise = client.findUnique({
+	where: { id: "page-1" },
+	omit: ["rating"] as const,
+});
+const paginatedSelectedPromise = client.findMany({
+	after: null,
+	select: ["shopName"] as const,
+});
 
-type QueryWithRaw = Awaited<typeof withRawPromise>;
-type QueryWithoutRaw = Awaited<typeof withoutRawPromise>;
+type AllRows = Awaited<typeof allRowsPromise>;
+type SelectedRows = Awaited<typeof selectedRowsPromise>;
+type OmittedRows = Awaited<typeof omittedRowsPromise>;
+type FirstSelected = Awaited<typeof firstSelectedPromise>;
+type UniqueOmitted = Awaited<typeof uniqueOmittedPromise>;
+type PaginatedSelected = Awaited<typeof paginatedSelectedPromise>;
 
-type _rawResponseContract = Expect<
-	Equal<QueryWithRaw, QueryResponseWithRawResponse<Schema>>
+type _allRowsContract = Expect<Equal<AllRows, Array<Partial<Schema>>>>;
+
+type _selectedRowsContract = Expect<
+	Equal<SelectedRows, Array<Partial<Pick<Schema, "shopName">>>>
 >;
 
-type _noRawResponseContract = Expect<
-	Equal<QueryWithoutRaw, { results: Partial<Schema>[] }>
+type _omittedRowsContract = Expect<
+	Equal<OmittedRows, Array<Partial<Omit<Schema, "rating">>>>
+>;
+
+type _firstSelectedContract = Expect<
+	Equal<FirstSelected, Partial<Pick<Schema, "shopName">> | null>
+>;
+
+type _uniqueOmittedContract = Expect<
+	Equal<UniqueOmitted, Partial<Omit<Schema, "rating">> | null>
+>;
+
+type _paginatedSelectedContract = Expect<
+	Equal<PaginatedSelected, PaginateResult<Partial<Pick<Schema, "shopName">>>>
 >;
