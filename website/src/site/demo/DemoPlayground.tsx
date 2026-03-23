@@ -75,8 +75,8 @@ function typeScriptLinterExtension() {
 				: [];
 		},
 		{
-			// @ts-expect-error: null means “no tooltip” per runtime; types don’t allow it.
-			tooltipFilter: () => null,
+			// Empty set => no lint hover tooltip (see @codemirror/lint LintConfig.tooltipFilter).
+			tooltipFilter: () => [],
 		},
 	);
 }

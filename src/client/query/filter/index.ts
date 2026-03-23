@@ -147,8 +147,3 @@ export function transformQueryFilterToApiFilter<
 
 	return buildLeafFilterObject(queryFilter, camelPropertyNameToNameAndTypeMap);
 }
-
-/**
- * @deprecated Use `transformQueryFilterToApiFilter` instead.
- */
-export const recursivelyBuildFilter = transformQueryFilterToApiFilter;

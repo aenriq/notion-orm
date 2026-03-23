@@ -100,8 +100,6 @@ function mapQueryResults<
 
 	for (const result of args.results) {
 		if (!isPageWithProperties(result)) {
-			// biome-ignore lint/suspicious/noConsole: surfaced for debugging unexpected Notion payloads
-			console.log("Skipping this page: ", { result });
 			continue;
 		}
 
@@ -178,7 +176,4 @@ export function buildQueryResponse<
 	};
 }
 
-export {
-	recursivelyBuildFilter,
-	transformQueryFilterToApiFilter,
-} from "./filter";
+export { transformQueryFilterToApiFilter } from "./filter";

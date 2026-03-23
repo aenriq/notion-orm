@@ -709,8 +709,7 @@ export class DatabaseClient<
 
 				if (!this.loggedSchemaValidationIssues.has(issueSignature)) {
 					this.loggedSchemaValidationIssues.add(issueSignature);
-					// biome-ignore lint/suspicious/noConsole: surface schema drift to the
-					// developer console
+					// biome-ignore lint/suspicious/noConsole: surface schema drift
 					console.error(
 						`⚠️ ${AST_RUNTIME_CONSTANTS.PACKAGE_LOG_PREFIX} ${
 							AST_RUNTIME_CONSTANTS.SCHEMA_DRIFT_PREFIX
@@ -734,8 +733,7 @@ export class DatabaseClient<
 
 					if (!this.loggedSchemaValidationIssues.has(issueSignature)) {
 						this.loggedSchemaValidationIssues.add(issueSignature);
-						// biome-ignore lint/suspicious/noConsole: surfaced for debugging
-						// unexpected Notion payloads
+						// biome-ignore lint/suspicious/noConsole: unexpected remote properties
 						console.error(
 							`⚠️ ${AST_RUNTIME_CONSTANTS.PACKAGE_LOG_PREFIX} ${AST_RUNTIME_CONSTANTS.SCHEMA_DRIFT_PREFIX} for the following Notion database ${schemaLabel}
 						\nUnexpected property found in remote data: \`${remoteColName}\`
@@ -762,8 +760,7 @@ export class DatabaseClient<
 					return;
 				}
 				this.loggedSchemaValidationIssues.add(issueSignature);
-				// biome-ignore lint/suspicious/noConsole: surface schema drift to the
-				// developer console
+				// biome-ignore lint/suspicious/noConsole: schema validation failures
 				console.error(
 					`⚠️ ${AST_RUNTIME_CONSTANTS.PACKAGE_LOG_PREFIX} ${
 						AST_RUNTIME_CONSTANTS.SCHEMA_DRIFT_PREFIX
@@ -777,12 +774,6 @@ export class DatabaseClient<
 			\n\n✅ ${AST_RUNTIME_CONSTANTS.SCHEMA_DRIFT_HELP_MESSAGE}
 			`,
 				);
-				// biome-ignore lint/suspicious/noConsole: surface schema drift to the
-				// developer console
-				console.log("Validation details:", {
-					issues: parseError.issues,
-					result: result,
-				});
 			}
 		}
 	}

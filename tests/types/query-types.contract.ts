@@ -23,14 +23,15 @@ type BookColumnTypes = {
 	tags: "multi_select";
 };
 
-type QueryShape = Query<BookSchema, BookColumnTypes>;
-type _queryShapeExists = Expect<QueryShape extends object ? true : false>;
+/** Notion `filter` / `sort` payload shape for the query transformer — not `findMany` args (`where` / `sortBy`). */
+type ApiQueryFilterSortShape = Query<BookSchema, BookColumnTypes>;
+type _queryShapeExists = Expect<ApiQueryFilterSortShape extends object ? true : false>;
 type FindManyShape = FindManyArgs<BookSchema, BookColumnTypes>;
 type FindFirstShape = FindFirstArgs<BookSchema, BookColumnTypes>;
 type FindUniqueShape = FindUniqueArgs<BookSchema>;
 type UpdateManyShape = UpdateManyArgs<BookSchema, BookColumnTypes>;
 
-const validQuery: QueryShape = {
+const validQuery: ApiQueryFilterSortShape = {
 	filter: {
 		and: [
 			{
@@ -54,7 +55,7 @@ const validQuery: QueryShape = {
 
 void validQuery;
 
-const validSortedQuery: QueryShape = {
+const validSortedQuery: ApiQueryFilterSortShape = {
 	sort: [
 		{ property: "rating", direction: "descending" },
 		{ timestamp: "created_time", direction: "ascending" },
@@ -62,7 +63,7 @@ const validSortedQuery: QueryShape = {
 };
 void validSortedQuery;
 
-const invalidNumberOperator: QueryShape = {
+const invalidNumberOperator: ApiQueryFilterSortShape = {
 	filter: {
 		// @ts-expect-error number properties do not support text operators
 		rating: { contains: "x" },
@@ -70,7 +71,7 @@ const invalidNumberOperator: QueryShape = {
 };
 void invalidNumberOperator;
 
-const invalidPropertyKey: QueryShape = {
+const invalidPropertyKey: ApiQueryFilterSortShape = {
 	filter: {
 		// @ts-expect-error unknown properties are not allowed
 		unknownColumn: { equals: "x" },
@@ -78,7 +79,7 @@ const invalidPropertyKey: QueryShape = {
 };
 void invalidPropertyKey;
 
-const invalidSortProperty: QueryShape = {
+const invalidSortProperty: ApiQueryFilterSortShape = {
 	sort: [
 		// @ts-expect-error invalid sort key
 		{ property: "Rating", direction: "ascending" },
@@ -103,7 +104,7 @@ const validFindUniqueProjection: FindUniqueShape = {
 void validFindUniqueProjection;
 
 const invalidFindManyProjectionKey: FindManyShape = {
-	// @ts-expect-error projection keys are limited to schema keys
+	// @ts-expect-error invalid projection key
 	select: ["missingColumn"],
 };
 void invalidFindManyProjectionKey;
