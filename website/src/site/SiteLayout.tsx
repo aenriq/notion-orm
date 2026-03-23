@@ -245,16 +245,6 @@ const pageLinkBaseClass = css({
 	transitionProperty: "opacity",
 	transitionDuration: "220ms",
 	_hover: { opacity: 1 },
-	// Literal keys required so Panda static extraction emits these rules (computed keys from
-	// `siteClassNames` are not analyzed). Must match `PAGE_LINK_ARROW_ATTR` / `PAGE_LINK_ARROW_VALUE`.
-	"&:hover [data-page-link-arrow='true']": {
-		opacity: 1,
-		transform: "translateY(0)",
-	},
-	"&:focus-visible [data-page-link-arrow='true']": {
-		opacity: 1,
-		transform: "translateY(0)",
-	},
 });
 
 const pageLinkActiveClass = css({
@@ -276,18 +266,6 @@ const pageLinkDotClass = css({
 	h: "1.5",
 	rounded: "full",
 	bg: { base: "textLight", _dark: "white" },
-});
-
-const pageLinkArrowClass = css({
-	display: "inline-flex",
-	alignItems: "center",
-	justifyContent: "center",
-	fontSize: "sm",
-	lineHeight: "1",
-	opacity: 0,
-	transform: "translateY(2px)",
-	transitionProperty: "opacity, transform",
-	transitionDuration: "220ms",
 });
 
 const Sidebar: FC<SidebarProps> = ({ sitePages, currentPath, toc }) => {
@@ -323,11 +301,14 @@ const Sidebar: FC<SidebarProps> = ({ sitePages, currentPath, toc }) => {
 					href={githubUrl}
 					target="_blank"
 					rel="noreferrer"
-					className={cx(pageLinkBaseClass, pageLinkInactiveClass)}>
+					className={cx(
+						pageLinkBaseClass,
+						pageLinkInactiveClass,
+						"site-nav-github-link",
+					)}>
 					<span>GitHub</span>
 					<span className={pageLinkAdornmentClass}>
 						<span
-							className={pageLinkArrowClass}
 							{...{ [PAGE_LINK_ARROW_ATTR]: PAGE_LINK_ARROW_VALUE }}
 							aria-hidden>
 							↗

@@ -1,0 +1,19 @@
+/* GitHub ↗: global rules avoid Panda opacity/cascade fights on the sidebar link. */
+.site-nav-github-link [data-page-link-arrow="true"] {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 0.875rem;
+	line-height: 1;
+	opacity: 0;
+	transform: translateY(2px);
+	transition:
+		opacity 220ms,
+		transform 220ms;
+}
+
+.site-nav-github-link:hover [data-page-link-arrow="true"],
+.site-nav-github-link:focus-visible [data-page-link-arrow="true"] {
+	opacity: 1;
+	transform: translateY(0);
+}

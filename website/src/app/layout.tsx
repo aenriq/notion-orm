@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import "../styled-system/styles.css";
 import "../site/demo/demoCursorHint.css";
 import "../site/demo/demoPlaygroundResetButton.css";
+import "../site/siteNavGithubLink.css";
 import { AgentationDev } from "../site/AgentationDev";
 import { siteTitle } from "../site/config";
 import {
