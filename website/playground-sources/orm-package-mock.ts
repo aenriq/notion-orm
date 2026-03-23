@@ -68,27 +68,53 @@ type DateFilters = {
 	next_year?: {};
 };
 
-type FilterTypeMap<Schema> = {
-	[K in keyof Schema]?: Schema[K] extends string
-		? TextFilters
-		: Schema[K] extends number
-			? NumberFilters
-			: Schema[K] extends boolean
-				? CheckboxFilters
-				: Schema[K] extends string[]
-					? MultiSelectFilters<Schema[K][number]>
-					: Schema[K] extends DateValue
+type FilterForColumnType<
+	PropertyValue,
+	ColumnType extends string,
+> = ColumnType extends "title" | "rich_text" | "url" | "email" | "phone_number"
+	? TextFilters
+	: ColumnType extends "number"
+		? NumberFilters
+		: ColumnType extends "checkbox"
+			? CheckboxFilters
+			: ColumnType extends "select"
+				? SelectFilters<Extract<NonNullable<PropertyValue>, string>>
+				: ColumnType extends "multi_select"
+					? MultiSelectFilters<
+							Extract<NonNullable<PropertyValue>, string[]>[number]
+						>
+					: ColumnType extends "date"
 						? DateFilters
-						: TextFilters;
+						: ColumnType extends "status"
+							? SelectFilters<Extract<NonNullable<PropertyValue>, string>>
+							: TextFilters;
+
+type SingleFilter<
+	Schema extends object,
+	ColumnTypes extends Record<keyof Schema, string>,
+> = {
+	[K in keyof Schema]?: FilterForColumnType<Schema[K], ColumnTypes[K]>;
 };
 
-type CompoundFilter<Schema> =
-	| { and: Array<FilterTypeMap<Schema> | CompoundFilter<Schema>> }
-	| { or: Array<FilterTypeMap<Schema> | CompoundFilter<Schema>> };
+type CompoundFilter<
+	Schema extends object,
+	ColumnTypes extends Record<keyof Schema, string>,
+> =
+	| {
+			and: Array<
+				SingleFilter<Schema, ColumnTypes> | CompoundFilter<Schema, ColumnTypes>
+			>;
+	  }
+	| {
+			or: Array<
+				SingleFilter<Schema, ColumnTypes> | CompoundFilter<Schema, ColumnTypes>
+			>;
+	  };
 
-export type QueryFilter<Schema> =
-	| FilterTypeMap<Schema>
-	| CompoundFilter<Schema>;
+export type QueryFilter<
+	Schema extends object,
+	ColumnTypes extends Record<keyof Schema, string>,
+> = SingleFilter<Schema, ColumnTypes> | CompoundFilter<Schema, ColumnTypes>;
 
 type SortDirection = "ascending" | "descending";
 type TimestampSort = {
@@ -103,54 +129,77 @@ type SortBy<ColumnTypes extends Record<string, string>> = Array<
 	PropertySort<ColumnTypes> | TimestampSort
 >;
 
-export type Query<
-		Schema extends object,
-		ColumnTypes extends Record<string, string>,
-	> = {
-		filter?: QueryFilter<Schema>;
-		sort?: SortBy<ColumnTypes>;
-		includeRawResponse?: boolean;
-	};
+export type ProjectionPropertyName<Schema extends object> = Extract<
+	keyof Schema,
+	string | number
+>;
+export type ProjectionPropertyList<Schema extends object> =
+	readonly ProjectionPropertyName<Schema>[];
+export type ProjectionArgs<Schema extends object> =
+	| { select: ProjectionPropertyList<Schema>; omit?: never }
+	| { omit: ProjectionPropertyList<Schema>; select?: never }
+	| { select?: undefined; omit?: undefined };
+
+type ResolvedProjectionArgs<
+	Schema extends object,
+	ProjectionSelection extends ProjectionArgs<Schema> | undefined,
+> = ProjectionSelection extends ProjectionArgs<Schema>
+	? ProjectionSelection
+	: ProjectionArgs<Schema>;
+
+export type ProjectedFromArgs<
+	Schema extends object,
+	ProjectionSelection extends ProjectionArgs<Schema> | undefined = undefined,
+> = ProjectionSelection extends {
+	select: infer SelectedPropertyNames extends ProjectionPropertyList<Schema>;
+}
+	? Partial<Pick<Schema, SelectedPropertyNames[number]>>
+	: ProjectionSelection extends {
+				omit: infer OmittedPropertyNames extends ProjectionPropertyList<Schema>;
+			}
+		? Partial<Omit<Schema, OmittedPropertyNames[number]>>
+		: Partial<Schema>;
 
 export type FindManyArgs<
 		Schema extends object,
-		ColumnTypes extends Record<string, string>,
+		ColumnTypes extends Record<keyof Schema, string>,
+		ProjectionSelection extends ProjectionArgs<Schema> | undefined = undefined,
 	> = {
-		where?: QueryFilter<Schema>;
+		where?: QueryFilter<Schema, ColumnTypes>;
 		sortBy?: SortBy<ColumnTypes>;
 		size?: number;
-		select?: { [K in keyof Schema]?: true };
-		omit?: { [K in keyof Schema]?: true };
 		stream?: number;
 		after?: string | null;
-	};
+	} & ResolvedProjectionArgs<Schema, ProjectionSelection>;
 
 export type FindFirstArgs<
 		Schema extends object,
-		ColumnTypes extends Record<string, string>,
+		ColumnTypes extends Record<keyof Schema, string>,
+		ProjectionSelection extends ProjectionArgs<Schema> | undefined = undefined,
 	> = {
-		where?: QueryFilter<Schema>;
+		where?: QueryFilter<Schema, ColumnTypes>;
 		sortBy?: SortBy<ColumnTypes>;
-		select?: { [K in keyof Schema]?: true };
-		omit?: { [K in keyof Schema]?: true };
-	};
+	} & ResolvedProjectionArgs<Schema, ProjectionSelection>;
 
-export type FindUniqueArgs = {
-	where: { id: string };
-};
+export type FindUniqueArgs<
+		Schema extends object,
+		ProjectionSelection extends ProjectionArgs<Schema> | undefined = undefined,
+	> = {
+		where: { id: string };
+	} & ResolvedProjectionArgs<Schema, ProjectionSelection>;
 
-export type PaginateResult<Schema extends object> = {
-	data: Partial<Schema>[];
+export type PaginateResult<Row extends object> = {
+	data: Row[];
 	nextCursor: string | null;
 	hasMore: boolean;
 };
 
 export type CountArgs<
-	Schema extends object,
-	_ColumnTypes extends Record<string, string>,
-> = {
-	where?: QueryFilter<Schema>;
-};
+		Schema extends object,
+		ColumnTypes extends Record<keyof Schema, string>,
+	> = {
+		where?: QueryFilter<Schema, ColumnTypes>;
+	};
 
 export type CreateArgs<Schema extends object> = {
 	properties: Schema;
@@ -171,115 +220,129 @@ export type UpdateArgs<Schema extends object> = {
 };
 
 export type UpdateManyArgs<
-	Schema extends object,
-	_ColumnTypes extends Record<string, string>,
-> = {
-	where: QueryFilter<Schema>;
-	properties: Partial<Schema>;
-};
+		Schema extends object,
+		ColumnTypes extends Record<keyof Schema, string>,
+	> = {
+		where: QueryFilter<Schema, ColumnTypes>;
+		properties: Partial<Schema>;
+	};
 
 export type UpsertArgs<
-	Schema extends object,
-	_ColumnTypes extends Record<string, string>,
-> = {
-	where: QueryFilter<Schema>;
-	create: Schema;
-	update: Partial<Schema>;
-};
+		Schema extends object,
+		ColumnTypes extends Record<keyof Schema, string>,
+	> = {
+		where: QueryFilter<Schema, ColumnTypes>;
+		create: Schema;
+		update: Partial<Schema>;
+	};
 
 export type DeleteArgs = {
 	where: { id: string };
 };
 
 export type DeleteManyArgs<
-	Schema extends object,
-	_ColumnTypes extends Record<string, string>,
-> = {
-	where: QueryFilter<Schema>;
-};
+		Schema extends object,
+		ColumnTypes extends Record<keyof Schema, string>,
+	> = {
+		where: QueryFilter<Schema, ColumnTypes>;
+	};
 
 export class DatabaseClient<
-	Schema extends object,
-	ColumnTypes extends Record<string, string>,
-> {
-	constructor(_args: {
-		id: string;
-		camelPropertyNameToNameAndTypeMap: Record<
-			string,
-			{ columnName: string; type: string }
-		>;
-		auth: string;
-		name: string;
-		schema: unknown;
-	}) {}
+		Schema extends object,
+		ColumnTypes extends Record<string, string>,
+	> {
+		constructor(_args: {
+			id: string;
+			camelPropertyNameToNameAndTypeMap: Record<
+				string,
+				{ columnName: string; type: string }
+			>;
+			auth: string;
+			name: string;
+			schema: unknown;
+		}) {}
 
-	async add(_args: {
-		properties: Schema;
-		icon?: unknown;
-		cover?: unknown;
-		markdown?: unknown;
-	}): Promise<{ id: string }> {
-		return { id: "mock-page-id" };
+		findMany<
+			ProjectionSelection extends
+				| ProjectionArgs<Schema>
+				| undefined = undefined,
+		>(
+			_args: FindManyArgs<Schema, ColumnTypes, ProjectionSelection> & {
+				stream: number;
+			},
+		): AsyncIterable<ProjectedFromArgs<Schema, ProjectionSelection>>;
+		findMany<
+			ProjectionSelection extends
+				| ProjectionArgs<Schema>
+				| undefined = undefined,
+		>(
+			_args: FindManyArgs<Schema, ColumnTypes, ProjectionSelection> & {
+				after: string | null;
+			},
+		): Promise<PaginateResult<ProjectedFromArgs<Schema, ProjectionSelection>>>;
+		findMany<
+			ProjectionSelection extends
+				| ProjectionArgs<Schema>
+				| undefined = undefined,
+		>(
+			_args?: FindManyArgs<Schema, ColumnTypes, ProjectionSelection>,
+		): Promise<Array<ProjectedFromArgs<Schema, ProjectionSelection>>>;
+		findMany(): Promise<Array<ProjectedFromArgs<Schema>>> {
+			return Promise.resolve([]);
+		}
+
+		async findFirst<
+			ProjectionSelection extends
+				| ProjectionArgs<Schema>
+				| undefined = undefined,
+		>(
+			_args?: FindFirstArgs<Schema, ColumnTypes, ProjectionSelection>,
+		): Promise<ProjectedFromArgs<Schema, ProjectionSelection> | null> {
+			return null;
+		}
+
+		async findUnique<
+			ProjectionSelection extends
+				| ProjectionArgs<Schema>
+				| undefined = undefined,
+		>(
+			_args: FindUniqueArgs<Schema, ProjectionSelection>,
+		): Promise<ProjectedFromArgs<Schema, ProjectionSelection> | null> {
+			return null;
+		}
+
+		async count(_args?: CountArgs<Schema, ColumnTypes>): Promise<number> {
+			return 0;
+		}
+
+		async create(_args: CreateArgs<Schema>): Promise<{ id: string }> {
+			return { id: "mock-page-id" };
+		}
+
+		async createMany(
+			_args: CreateManyArgs<Schema>,
+		): Promise<Array<{ id: string }>> {
+			return [];
+		}
+
+		async update(_args: UpdateArgs<Schema>): Promise<void> {}
+
+		async updateMany(
+			_args: UpdateManyArgs<Schema, ColumnTypes>,
+		): Promise<void> {}
+
+		async upsert(
+			_args: UpsertArgs<Schema, ColumnTypes>,
+		): Promise<{ id: string } | undefined> {
+			return { id: "mock-page-id" };
+		}
+
+		async delete(_args: DeleteArgs): Promise<void> {}
+
+		async deleteMany(
+			_args: DeleteManyArgs<Schema, ColumnTypes>,
+		): Promise<void> {}
 	}
-
-	async query(_query: Query<Schema, ColumnTypes>): Promise<{
-		results: Partial<Schema>[];
-		rawResponse?: unknown;
-	}> {
-		return { results: [] };
-	}
-
-	findMany(
-		_args: FindManyArgs<Schema, ColumnTypes> & { stream: number },
-	): AsyncIterable<Partial<Schema>>;
-	findMany(
-		_args: FindManyArgs<Schema, ColumnTypes> & { after: string | null },
-	): Promise<PaginateResult<Schema>>;
-	findMany(
-		_args?: FindManyArgs<Schema, ColumnTypes>,
-	): Promise<Partial<Schema>[]>;
-	findMany(): Promise<Partial<Schema>[]> {
-		return Promise.resolve([]);
-	}
-
-	async findFirst(
-		_args?: FindFirstArgs<Schema, ColumnTypes>,
-	): Promise<Partial<Schema> | null> {
-		return null;
-	}
-
-	async findUnique(_args: FindUniqueArgs): Promise<Partial<Schema> | null> {
-		return null;
-	}
-
-	async count(_args?: CountArgs<Schema, ColumnTypes>): Promise<number> {
-		return 0;
-	}
-
-	async create(_args: CreateArgs<Schema>): Promise<{ id: string }> {
-		return { id: "mock-page-id" };
-	}
-
-	async createMany(
-		_args: CreateManyArgs<Schema>,
-	): Promise<Array<{ id: string }>> {
-		return [];
-	}
-
-	async update(_args: UpdateArgs<Schema>): Promise<void> {}
-
-	async updateMany(_args: UpdateManyArgs<Schema, ColumnTypes>): Promise<void> {}
-
-	async upsert(
-		_args: UpsertArgs<Schema, ColumnTypes>,
-	): Promise<{ id: string } | undefined> {
-		return { id: "mock-page-id" };
-	}
-
-	async delete(_args: DeleteArgs): Promise<void> {}
-
-	async deleteMany(_args: DeleteManyArgs<Schema, ColumnTypes>): Promise<void> {}
-}
 
 export type AgentIcon =
 	| { type: "emoji"; emoji: string }
