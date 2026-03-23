@@ -1,22 +1,34 @@
-import type { Query } from "../../src/client/queryTypes";
+import type {
+	FindFirstArgs,
+	FindManyArgs,
+	FindUniqueArgs,
+	Query,
+	UpdateManyArgs,
+} from "../../src/client/queryTypes";
 import type { Expect } from "./helpers/assert";
 
 type BookSchema = {
 	shopName: string;
 	rating: number;
-	visitStatus: "Want to Go" | "Visited";
+	hasWifi: boolean;
+	neighborhood: "Downtown" | "Midtown";
 	tags: string[];
 };
 
 type BookColumnTypes = {
 	shopName: "title";
 	rating: "number";
-	visitStatus: "status";
+	hasWifi: "checkbox";
+	neighborhood: "select";
 	tags: "multi_select";
 };
 
 type QueryShape = Query<BookSchema, BookColumnTypes>;
 type _queryShapeExists = Expect<QueryShape extends object ? true : false>;
+type FindManyShape = FindManyArgs<BookSchema, BookColumnTypes>;
+type FindFirstShape = FindFirstArgs<BookSchema, BookColumnTypes>;
+type FindUniqueShape = FindUniqueArgs<BookSchema>;
+type UpdateManyShape = UpdateManyArgs<BookSchema, BookColumnTypes>;
 
 const validQuery: QueryShape = {
 	filter: {
@@ -28,7 +40,10 @@ const validQuery: QueryShape = {
 				rating: { greater_than: 3 },
 			},
 			{
-				visitStatus: { equals: "Want to Go" },
+				hasWifi: { equals: true },
+			},
+			{
+				neighborhood: { equals: "Downtown" },
 			},
 			{
 				tags: { contains: "quiet" },
@@ -38,6 +53,14 @@ const validQuery: QueryShape = {
 };
 
 void validQuery;
+
+const validSortedQuery: QueryShape = {
+	sort: [
+		{ property: "rating", direction: "descending" },
+		{ timestamp: "created_time", direction: "ascending" },
+	],
+};
+void validSortedQuery;
 
 const invalidNumberOperator: QueryShape = {
 	filter: {
@@ -54,3 +77,60 @@ const invalidPropertyKey: QueryShape = {
 	},
 };
 void invalidPropertyKey;
+
+const invalidSortProperty: QueryShape = {
+	sort: [
+		// @ts-expect-error invalid sort key
+		{ property: "Rating", direction: "ascending" },
+	],
+};
+void invalidSortProperty;
+
+const validFindManyProjection: FindManyShape = {
+	select: ["shopName", "rating"] as const,
+};
+void validFindManyProjection;
+
+const validFindFirstProjection: FindFirstShape = {
+	omit: ["tags"] as const,
+};
+void validFindFirstProjection;
+
+const validFindUniqueProjection: FindUniqueShape = {
+	where: { id: "page-1" },
+	select: ["shopName"] as const,
+};
+void validFindUniqueProjection;
+
+const invalidFindManyProjectionKey: FindManyShape = {
+	// @ts-expect-error projection keys are limited to schema keys
+	select: ["missingColumn"],
+};
+void invalidFindManyProjectionKey;
+
+const validUpdateManyWhere: UpdateManyShape = {
+	properties: { rating: 5 },
+	where: {
+		hasWifi: { equals: true },
+		neighborhood: { equals: "Downtown" },
+	},
+};
+void validUpdateManyWhere;
+
+const invalidCheckboxTextOperator: UpdateManyShape = {
+	properties: { rating: 4 },
+	where: {
+		// @ts-expect-error invalid checkbox filter
+		hasWifi: { contains: "true" },
+	},
+};
+void invalidCheckboxTextOperator;
+
+const invalidSelectBooleanValue: UpdateManyShape = {
+	properties: { rating: 3 },
+	where: {
+		// @ts-expect-error invalid select filter value
+		neighborhood: { equals: true },
+	},
+};
+void invalidSelectBooleanValue;
