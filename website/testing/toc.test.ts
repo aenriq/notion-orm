@@ -1,0 +1,106 @@
+import { describe, expect, test } from "bun:test";
+import {
+	getActiveHeadingIdFromTargets,
+	getMissingTocTargetIds,
+	groupTocIntoSections,
+	sectionContainsActiveId,
+} from "../src/site/toc";
+import type { TocEntry } from "../src/site/types";
+
+const toc: TocEntry[] = [
+	{ id: "intro", label: "Intro", depth: 2 },
+	{ id: "overview", label: "Overview", depth: 3 },
+	{ id: "details", label: "Details", depth: 4 },
+	{ id: "api", label: "API", depth: 2 },
+];
+
+describe("groupTocIntoSections", () => {
+	test("nests subheadings under the preceding h2 section", () => {
+		expect(groupTocIntoSections(toc)).toEqual([
+			{
+				root: { id: "intro", label: "Intro", depth: 2 },
+				children: [
+					{ id: "overview", label: "Overview", depth: 3 },
+					{ id: "details", label: "Details", depth: 4 },
+				],
+			},
+			{
+				root: { id: "api", label: "API", depth: 2 },
+				children: [],
+			},
+		]);
+	});
+
+	test("falls back to flat sections when no h2 headings exist", () => {
+		expect(
+			groupTocIntoSections([
+				{ id: "child-a", label: "Child A", depth: 3 },
+				{ id: "child-b", label: "Child B", depth: 4 },
+			]),
+		).toEqual([
+			{
+				root: { id: "child-a", label: "Child A", depth: 3 },
+				children: [],
+			},
+			{
+				root: { id: "child-b", label: "Child B", depth: 4 },
+				children: [],
+			},
+		]);
+	});
+});
+
+describe("sectionContainsActiveId", () => {
+	test("expands a section when either the root or a child is active", () => {
+		const [section] = groupTocIntoSections(toc);
+		expect(section).toBeDefined();
+		if (!section) {
+			throw new Error("expected a grouped TOC section");
+		}
+
+		expect(sectionContainsActiveId(section, "intro")).toBe(true);
+		expect(sectionContainsActiveId(section, "overview")).toBe(true);
+		expect(sectionContainsActiveId(section, "api")).toBe(false);
+	});
+});
+
+describe("getActiveHeadingIdFromTargets", () => {
+	test("chooses the last heading above the activation threshold", () => {
+		expect(
+			getActiveHeadingIdFromTargets({
+				headings: [
+					{ id: "intro", top: -20 },
+					{ id: "overview", top: 60 },
+					{ id: "details", top: 220 },
+				],
+				isAtBottom: false,
+				activationOffset: 140,
+			}),
+		).toBe("overview");
+	});
+
+	test("pins to the final heading at the bottom of the page", () => {
+		expect(
+			getActiveHeadingIdFromTargets({
+				headings: [
+					{ id: "intro", top: -20 },
+					{ id: "overview", top: 120 },
+					{ id: "details", top: 380 },
+				],
+				isAtBottom: true,
+			}),
+		).toBe("details");
+	});
+});
+
+describe("getMissingTocTargetIds", () => {
+	test("reports TOC entries that do not resolve to DOM headings", () => {
+		expect(
+			getMissingTocTargetIds({
+				toc,
+				getElementById: (id) =>
+					id === "intro" || id === "overview" ? {} : null,
+			}),
+		).toEqual(["details", "api"]);
+	});
+});
