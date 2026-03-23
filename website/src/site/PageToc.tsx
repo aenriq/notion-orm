@@ -2,6 +2,14 @@
 
 import { type FC, useEffect, useState } from "react";
 import { css, cx } from "../styled-system/css";
+import {
+	BOTTOM_OF_PAGE_THRESHOLD,
+	getActiveHeadingIdFromTargets,
+	getMissingTocTargetIds,
+	groupTocIntoSections,
+	HEADING_ACTIVATION_OFFSET,
+	sectionContainsActiveId,
+} from "./toc";
 import type { TocEntry } from "./types";
 
 interface PageTocProps {
@@ -99,48 +107,6 @@ const tocNestedLinkH4IndentClass = css({
 	pl: "2",
 });
 
-function groupTocIntoSections(toc: TocEntry[]): Array<{
-	root: TocEntry;
-	children: TocEntry[];
-}> {
-	const sections: Array<{ root: TocEntry; children: TocEntry[] }> = [];
-	let current: { root: TocEntry; children: TocEntry[] } | null = null;
-
-	for (const entry of toc) {
-		if (entry.depth === 2) {
-			current = { root: entry, children: [] };
-			sections.push(current);
-		} else if (entry.depth > 2 && current) {
-			current.children.push(entry);
-		}
-	}
-
-	if (sections.length === 0 && toc.length > 0) {
-		return toc.map((entry): { root: TocEntry; children: TocEntry[] } => ({
-			root: entry,
-			children: [],
-		}));
-	}
-
-	return sections;
-}
-
-function sectionContainsActiveId(
-	section: { root: TocEntry; children: TocEntry[] },
-	activeId: string | null,
-): boolean {
-	if (activeId === null) {
-		return false;
-	}
-	if (section.root.id === activeId) {
-		return true;
-	}
-	return section.children.some((c) => c.id === activeId);
-}
-
-const HEADING_ACTIVATION_OFFSET = 140;
-const BOTTOM_OF_PAGE_THRESHOLD = 8;
-
 function getActiveHeadingId(toc: TocEntry[]): string | null {
 	const headings = toc
 		.map((entry) => document.getElementById(entry.id))
@@ -148,29 +114,17 @@ function getActiveHeadingId(toc: TocEntry[]): string | null {
 			(heading): heading is HTMLElement => heading instanceof HTMLElement,
 		);
 
-	if (headings.length === 0) {
-		return null;
-	}
-
 	const scrollBottom = window.scrollY + window.innerHeight;
 	const documentHeight = document.documentElement.scrollHeight;
 
-	if (scrollBottom >= documentHeight - BOTTOM_OF_PAGE_THRESHOLD) {
-		return headings.at(-1)?.id ?? null;
-	}
-
-	let activeId = headings[0].id;
-
-	for (const heading of headings) {
-		if (heading.getBoundingClientRect().top <= HEADING_ACTIVATION_OFFSET) {
-			activeId = heading.id;
-			continue;
-		}
-
-		break;
-	}
-
-	return activeId;
+	return getActiveHeadingIdFromTargets({
+		headings: headings.map((heading) => ({
+			id: heading.id,
+			top: heading.getBoundingClientRect().top,
+		})),
+		isAtBottom: scrollBottom >= documentHeight - BOTTOM_OF_PAGE_THRESHOLD,
+		activationOffset: HEADING_ACTIVATION_OFFSET,
+	});
 }
 
 export const PageToc: FC<PageTocProps> = ({ toc, className }) => {
@@ -179,6 +133,18 @@ export const PageToc: FC<PageTocProps> = ({ toc, className }) => {
 	useEffect(() => {
 		if (toc.length === 0) {
 			return;
+		}
+
+		if (process.env.NODE_ENV !== "production") {
+			const missingIds = getMissingTocTargetIds({
+				toc,
+				getElementById: (id) => document.getElementById(id),
+			});
+			if (missingIds.length > 0) {
+				throw new Error(
+					`[toc] Missing heading targets for ids: ${missingIds.join(", ")}`,
+				);
+			}
 		}
 
 		const updateActiveHeading = () => {

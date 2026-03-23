@@ -3,12 +3,13 @@ import { fileURLToPath } from "node:url";
 import createMDX from "@next/mdx";
 import webpack from "next/dist/compiled/webpack/webpack-lib.js";
 import remarkGfm from "remark-gfm";
+import { remarkStableHeadingIds } from "./src/site/headings.js";
 
 const workspaceRoot = dirname(fileURLToPath(import.meta.url));
 
 const withMDX = createMDX({
 	options: {
-		remarkPlugins: [remarkGfm],
+		remarkPlugins: [remarkGfm, remarkStableHeadingIds],
 	},
 });
 

@@ -2,7 +2,6 @@ import Link from "next/link";
 import type { FC, ReactNode } from "react";
 import { css, cx } from "../styled-system/css";
 import { githubUrl, siteTitle } from "./config";
-import { HeadingSlugProvider } from "./HeadingSlugProvider";
 import { PageToc } from "./PageToc";
 import {
 	PAGE_LINK_ARROW_ATTR,
@@ -376,9 +375,7 @@ export const Layout: FC<LayoutProps> = ({
 							articleProseClass,
 							articleBottomSpaceClass,
 						)}>
-						<HeadingSlugProvider key={currentPath || "/"}>
-							{children}
-						</HeadingSlugProvider>
+						{children}
 					</article>
 				</main>
 			</div>
