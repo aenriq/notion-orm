@@ -126,9 +126,9 @@ export default defineConfig({
 		"@font-face": {
 			fontFamily: '"Berkeley Mono"',
 			fontStyle: "normal",
-			fontWeight: "400",
+			fontWeight: "100 900",
 			fontDisplay: "swap",
-			src: "url('/fonts/BerkeleyMono-Regular.woff2') format('woff2')",
+			src: "url('/fonts/BerkeleyMonoVariable.woff2') format('woff2')",
 		},
 		"html, body": {
 			minHeight: "100%",

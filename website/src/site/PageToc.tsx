@@ -49,6 +49,10 @@ const tocLinkBaseClass = css({
 	py: "1",
 	fontSize: "sm",
 	lineHeight: "1.5",
+	minW: "0",
+	overflow: "hidden",
+	textOverflow: "ellipsis",
+	whiteSpace: "nowrap",
 	transitionProperty: "color, font-weight",
 	transitionDuration: "220ms",
 	_hover: {
@@ -332,6 +336,7 @@ export const PageToc: FC<PageTocProps> = ({ toc, className }) => {
 						<div key={section.root.id} className={tocSectionBlockClass}>
 							<a
 								href={`#${section.root.id}`}
+								title={section.root.label}
 								className={cx(
 									tocLinkBaseClass,
 									rootActive ? tocLinkActiveClass : tocLinkInactiveClass,
@@ -363,6 +368,7 @@ export const PageToc: FC<PageTocProps> = ({ toc, className }) => {
 														<a
 															key={child.id}
 															href={`#${child.id}`}
+															title={child.label}
 															className={cx(
 																tocLinkBaseClass,
 																childActive
