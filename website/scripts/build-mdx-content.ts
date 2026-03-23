@@ -1,11 +1,8 @@
-import { mkdir, readdir, watch } from "node:fs/promises";
+import { mkdir, readdir, rename, watch } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import remarkMdx from "remark-mdx";
-import remarkParse from "remark-parse";
-import { unified } from "unified";
 import { z } from "zod";
-import { collectHeadingsFromMdast } from "../src/site/headings.js";
+import { extractTocFromSiteMdx } from "../src/site/mdx-pipeline.js";
 import { type SitePath, sitePaths, type TocEntry } from "../src/site/types";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -44,11 +41,8 @@ function extractExportedMetadata(
 	return new Function(`return ${objectLiteral}`)() as Record<string, unknown>;
 }
 
-const headingProcessor = unified().use(remarkParse).use(remarkMdx);
-
 function extractToc(content: string): TocEntry[] {
-	const tree = headingProcessor.parse(content);
-	return collectHeadingsFromMdast(tree);
+	return extractTocFromSiteMdx(content);
 }
 
 function toPascalCase(base: string): string {
@@ -138,7 +132,12 @@ export function getPage(path: SitePath): SitePage | undefined {
 }
 `;
 
-	await Bun.write(join(generatedDir, "content.ts"), contentFile);
+	// Temp file + rename so dev/HMR never reads a partially written module.
+	const contentPath = join(generatedDir, "content.ts");
+	const tmpPath = `${contentPath}.tmp`;
+	await Bun.write(tmpPath, contentFile);
+	await rename(tmpPath, contentPath);
+
 	console.log(
 		`built ${pages.length} page(s): ${pages.map((p) => p.path).join(", ")}`,
 	);
@@ -159,7 +158,7 @@ async function watchAndBuild(): Promise<void> {
 			void build().catch((error) => {
 				console.error(error);
 			});
-		}, 80);
+		}, 120);
 	}
 }
 
