@@ -13,6 +13,7 @@ import {
 	isFullPage,
 	normalizePageResult,
 	transformQueryFilterToApiFilter,
+	transformQuerySortToApiSorts,
 } from "./query";
 import type {
 	CountArgs,
@@ -25,13 +26,11 @@ import type {
 	FindManyArgs,
 	FindUniqueArgs,
 	PaginateResult,
-	Query,
+	ProjectedFromArgs,
+	ProjectionArgs,
+	ProjectionPropertyName,
 	QueryFilter,
-	QueryResponseWithoutRawResponse,
-	QueryResponseWithRawResponse,
-	QueryWithoutRawResponse,
-	QueryWithRawResponse,
-	SimpleQueryResponse,
+	QuerySort,
 	SupportedNotionColumnType,
 	UpdateArgs,
 	UpdateManyArgs,
@@ -76,6 +75,51 @@ type SafeParseSchema = {
 	safeParse: (input: unknown) => SafeParseSchemaResult;
 };
 
+type NormalizedProjection<PropertyName extends string | number> = {
+	mode: "none" | "select" | "omit";
+	keys: Set<PropertyName>;
+};
+
+type ProjectionSelection<
+	DatabaseSchemaType extends Record<string, DatabasePropertyValue>,
+> = ProjectionArgs<DatabaseSchemaType> | undefined;
+
+type FindManyStreamArgs<
+	DatabaseSchemaType extends Record<string, DatabasePropertyValue>,
+	ColumnNameToColumnType extends Record<
+		keyof DatabaseSchemaType,
+		SupportedNotionColumnType
+	>,
+	Projection extends ProjectionSelection<DatabaseSchemaType>,
+> = FindManyArgs<DatabaseSchemaType, ColumnNameToColumnType, Projection> & {
+	stream: number;
+	after?: never;
+};
+
+type FindManyPaginatedArgs<
+	DatabaseSchemaType extends Record<string, DatabasePropertyValue>,
+	ColumnNameToColumnType extends Record<
+		keyof DatabaseSchemaType,
+		SupportedNotionColumnType
+	>,
+	Projection extends ProjectionSelection<DatabaseSchemaType>,
+> = FindManyArgs<DatabaseSchemaType, ColumnNameToColumnType, Projection> & {
+	after: string | null;
+	stream?: never;
+};
+
+type FindManyListArgs<
+	DatabaseSchemaType extends Record<string, DatabasePropertyValue>,
+	ColumnNameToColumnType extends Record<
+		keyof DatabaseSchemaType,
+		SupportedNotionColumnType
+	>,
+	Projection extends ProjectionSelection<DatabaseSchemaType>,
+> = FindManyArgs<DatabaseSchemaType, ColumnNameToColumnType, Projection> & {
+	after?: never;
+	stream?: never;
+};
+
 export class DatabaseClient<
 		DatabaseSchemaType extends Record<string, DatabasePropertyValue>,
 		ColumnNameToColumnType extends Record<
@@ -117,10 +161,7 @@ export class DatabaseClient<
 			this.loggedSchemaValidationIssues = new Set();
 		}
 
-		/**
-		 * @deprecated Use `create()` instead.
-		 */
-		public async add(args: {
+		private async createPage(args: {
 			properties: DatabaseSchemaType;
 			icon?: CreatePageParameters["icon"];
 			cover?: CreatePageParameters["cover"];
@@ -140,108 +181,86 @@ export class DatabaseClient<
 			callBody.markdown = markdown;
 
 			for (const [propertyName, value] of objectEntries(pageObject)) {
-				const { type, columnName } =
-					this.camelPropertyNameToNameAndTypeMap[propertyName];
+				const metadata = this.camelPropertyNameToNameAndTypeMap[propertyName];
+				if (!metadata) {
+					continue;
+				}
 				const columnObject = buildPropertyValueForAddPage({
-					type,
+					type: metadata.type,
 					value,
 				});
 
 				if (callBody.properties && columnObject) {
-					callBody.properties[columnName] = columnObject;
+					callBody.properties[metadata.columnName] = columnObject;
 				}
 			}
 
 			return await this.client.pages.create(callBody);
 		}
 
-		/**
-		 * @deprecated Use `findMany()` instead.
-		 */
-		public async query(
-			query: QueryWithRawResponse<DatabaseSchemaType, ColumnNameToColumnType>,
-		): Promise<QueryResponseWithRawResponse<DatabaseSchemaType>>;
-		public async query(
-			query: QueryWithoutRawResponse<
+		public findMany<
+			Projection extends ProjectionSelection<DatabaseSchemaType> = undefined,
+		>(
+			args: FindManyStreamArgs<
 				DatabaseSchemaType,
-				ColumnNameToColumnType
+				ColumnNameToColumnType,
+				Projection
 			>,
-		): Promise<QueryResponseWithoutRawResponse<DatabaseSchemaType>>;
-		public async query(
-			query: Query<DatabaseSchemaType, ColumnNameToColumnType>,
-		): Promise<SimpleQueryResponse<DatabaseSchemaType>> {
-			const queryCall: QueryDataSourceParameters = {
-				data_source_id: this.id,
-			};
-
-			queryCall.sorts = query.sort ?? [];
-
-			const filters = query.filter
-				? transformQueryFilterToApiFilter(
-						query.filter,
-						this.camelPropertyNameToNameAndTypeMap,
-					)
-				: undefined;
-			if (filters) {
-				queryCall.filter = filters;
-			}
-
-			const response = await this.client.dataSources.query(queryCall);
-			const responseArgs = {
-				response,
-				columnNameToColumnProperties: this.camelPropertyNameToNameAndTypeMap,
-				validateSchema: (result: Partial<DatabaseSchemaType>) =>
-					this.validateDatabaseSchema(result),
-			};
-
-			if (query.includeRawResponse === true) {
-				return buildQueryResponse<DatabaseSchemaType>({
-					...responseArgs,
-					options: { includeRawResponse: true },
-				});
-			}
-
-			return buildQueryResponse<DatabaseSchemaType>(responseArgs);
-		}
-
+		): AsyncIterable<ProjectedFromArgs<DatabaseSchemaType, Projection>>;
+		public findMany<
+			Projection extends ProjectionSelection<DatabaseSchemaType> = undefined,
+		>(
+			args: FindManyPaginatedArgs<
+				DatabaseSchemaType,
+				ColumnNameToColumnType,
+				Projection
+			>,
+		): Promise<
+			PaginateResult<ProjectedFromArgs<DatabaseSchemaType, Projection>>
+		>;
+		public findMany<
+			Projection extends ProjectionSelection<DatabaseSchemaType> = undefined,
+		>(
+			args?: FindManyListArgs<
+				DatabaseSchemaType,
+				ColumnNameToColumnType,
+				Projection
+			>,
+		): Promise<Array<ProjectedFromArgs<DatabaseSchemaType, Projection>>>;
 		public findMany(
-			args: FindManyArgs<DatabaseSchemaType, ColumnNameToColumnType> & {
-				stream: number;
-				after?: never;
-			},
-		): AsyncIterable<Partial<DatabaseSchemaType>>;
-		public findMany(
-			args: FindManyArgs<DatabaseSchemaType, ColumnNameToColumnType> & {
-				after: string | null;
-				stream?: never;
-			},
-		): Promise<PaginateResult<DatabaseSchemaType>>;
-		public findMany(
-			args?: FindManyArgs<DatabaseSchemaType, ColumnNameToColumnType> & {
-				after?: never;
-				stream?: never;
-			},
-		): Promise<Partial<DatabaseSchemaType>[]>;
-		public findMany(
-			args?: FindManyArgs<DatabaseSchemaType, ColumnNameToColumnType>,
-		):
-			| AsyncIterable<Partial<DatabaseSchemaType>>
-			| Promise<PaginateResult<DatabaseSchemaType>>
-			| Promise<Partial<DatabaseSchemaType>[]> {
-			this.validateProjectionArgs(args?.select, args?.omit);
+			args?: FindManyArgs<
+				DatabaseSchemaType,
+				ColumnNameToColumnType,
+				ProjectionArgs<DatabaseSchemaType>
+			>,
+		): AsyncIterable<unknown> | Promise<unknown> {
+			const projection = this.normalizeProjection(args);
 			if (args?.stream !== undefined) {
-				return this.createStreamIterable(args);
+				return this.createStreamIterable(args, projection);
 			}
 			if (args?.after !== undefined) {
-				return this.executeFindManyPaginated(args);
+				return this.executeFindManyPaginated(args, projection);
 			}
-			return this.executeFindMany(args);
+			return this.executeFindMany(args, projection);
 		}
 
+		public async findFirst<
+			Projection extends ProjectionSelection<DatabaseSchemaType> = undefined,
+		>(
+			args?: FindFirstArgs<
+				DatabaseSchemaType,
+				ColumnNameToColumnType,
+				Projection
+			>,
+		): Promise<ProjectedFromArgs<DatabaseSchemaType, Projection> | null>;
 		public async findFirst(
-			args?: FindFirstArgs<DatabaseSchemaType, ColumnNameToColumnType>,
+			args?: FindFirstArgs<
+				DatabaseSchemaType,
+				ColumnNameToColumnType,
+				ProjectionArgs<DatabaseSchemaType>
+			>,
 		): Promise<Partial<DatabaseSchemaType> | null> {
-			this.validateProjectionArgs(args?.select, args?.omit);
+			const projection = this.normalizeProjection(args);
 			const params = this.buildQueryParams({
 				where: args?.where,
 				sortBy: args?.sortBy,
@@ -253,14 +272,25 @@ export class DatabaseClient<
 				columnNameToColumnProperties: this.camelPropertyNameToNameAndTypeMap,
 				validateSchema: (result) => this.validateDatabaseSchema(result),
 			});
-			if (results.length === 0) return null;
-			const projected = this.applyProjection(results, args?.select, args?.omit);
+			if (results.length === 0) {
+				return null;
+			}
+			const projected = this.applyProjection(results, projection);
 			return projected[0] ?? null;
 		}
 
+		public async findUnique<
+			Projection extends ProjectionSelection<DatabaseSchemaType> = undefined,
+		>(
+			args: FindUniqueArgs<DatabaseSchemaType, Projection>,
+		): Promise<ProjectedFromArgs<DatabaseSchemaType, Projection> | null>;
 		public async findUnique(
-			args: FindUniqueArgs,
+			args: FindUniqueArgs<
+				DatabaseSchemaType,
+				ProjectionArgs<DatabaseSchemaType>
+			>,
 		): Promise<Partial<DatabaseSchemaType> | null> {
+			const projection = this.normalizeProjection(args);
 			if (!args?.where?.id) {
 				throw new Error(
 					`${AST_RUNTIME_CONSTANTS.PACKAGE_LOG_PREFIX} findUnique() requires 'where.id' to be a non-empty string.`,
@@ -270,12 +300,15 @@ export class DatabaseClient<
 				const page: GetPageResponse = await this.client.pages.retrieve({
 					page_id: args.where.id,
 				});
-				if (!isFullPage(page)) return null;
-				return normalizePageResult<DatabaseSchemaType>({
+				if (!isFullPage(page)) {
+					return null;
+				}
+				const normalized = normalizePageResult<DatabaseSchemaType>({
 					result: page,
 					camelPropertyNameToNameAndTypeMap:
 						this.camelPropertyNameToNameAndTypeMap,
 				});
+				return this.applyProjectionToRow(normalized, projection);
 			} catch (error: unknown) {
 				if (isNotFoundError(error)) {
 					return null;
@@ -307,7 +340,7 @@ export class DatabaseClient<
 		public async create(
 			args: CreateArgs<DatabaseSchemaType>,
 		): Promise<CreatePageResponse> {
-			return this.add({
+			return this.createPage({
 				properties: args.properties,
 				icon: args.icon,
 				cover: args.cover,
@@ -399,7 +432,7 @@ export class DatabaseClient<
 
 		private buildQueryParams(args: {
 			where?: QueryFilter<DatabaseSchemaType, ColumnNameToColumnType>;
-			sortBy?: QueryDataSourceParameters["sorts"];
+			sortBy?: QuerySort<ColumnNameToColumnType>;
 			size?: number;
 			after?: string;
 		}): QueryDataSourceParameters {
@@ -407,7 +440,10 @@ export class DatabaseClient<
 				data_source_id: this.id,
 			};
 			if (args.sortBy) {
-				params.sorts = args.sortBy;
+				params.sorts = transformQuerySortToApiSorts(
+					args.sortBy,
+					this.camelPropertyNameToNameAndTypeMap,
+				);
 			}
 			if (args.where) {
 				const filters = transformQueryFilterToApiFilter(
@@ -431,10 +467,17 @@ export class DatabaseClient<
 			data: Partial<DatabaseSchemaType>,
 		): CreatePageParameters["properties"] {
 			const properties: NonNullable<CreatePageParameters["properties"]> = {};
-			for (const [propertyName, value] of Object.entries(data)) {
-				if (value === undefined) continue;
+			for (const [propertyName, value] of objectEntries(data)) {
+				if (typeof propertyName !== "string") {
+					continue;
+				}
+				if (value === undefined) {
+					continue;
+				}
 				const meta = this.camelPropertyNameToNameAndTypeMap[propertyName];
-				if (!meta) continue;
+				if (!meta) {
+					continue;
+				}
 				const columnObject = buildPropertyValueForAddPage({
 					type: meta.type,
 					value,
@@ -446,37 +489,72 @@ export class DatabaseClient<
 			return properties;
 		}
 
-		private validateProjectionArgs(
-			select?: { [K in keyof DatabaseSchemaType]?: true },
-			omit?: { [K in keyof DatabaseSchemaType]?: true },
-		): void {
+		private normalizeProjection(
+			projectionArgs?: ProjectionArgs<DatabaseSchemaType>,
+		): NormalizedProjection<ProjectionPropertyName<DatabaseSchemaType>> {
+			const select = projectionArgs?.select;
+			const omit = projectionArgs?.omit;
 			if (select && omit) {
 				throw new Error(
 					`${AST_RUNTIME_CONSTANTS.PACKAGE_LOG_PREFIX} Cannot use both 'select' and 'omit' at the same time.`,
 				);
 			}
+			if (select) {
+				return { mode: "select", keys: new Set(select) };
+			}
+			if (omit) {
+				return { mode: "omit", keys: new Set(omit) };
+			}
+			return { mode: "none", keys: new Set() };
+		}
+
+		private applyProjectionToRow(
+			row: Partial<DatabaseSchemaType>,
+			projection: NormalizedProjection<
+				ProjectionPropertyName<DatabaseSchemaType>
+			>,
+		): Partial<DatabaseSchemaType> {
+			if (projection.mode === "select") {
+				const projected: Partial<DatabaseSchemaType> = {};
+				for (const key of projection.keys) {
+					if (key in row) {
+						projected[key] = row[key];
+					}
+				}
+				return projected;
+			}
+			if (projection.mode === "omit") {
+				const projected: Partial<DatabaseSchemaType> = { ...row };
+				for (const key of projection.keys) {
+					delete projected[key];
+				}
+				return projected;
+			}
+			return row;
 		}
 
 		private applyProjection(
 			results: Partial<DatabaseSchemaType>[],
-			select?: { [K in keyof DatabaseSchemaType]?: true },
-			omit?: { [K in keyof DatabaseSchemaType]?: true },
+			projection: NormalizedProjection<
+				ProjectionPropertyName<DatabaseSchemaType>
+			>,
 		): Partial<DatabaseSchemaType>[] {
-			if (!select && !omit) return results;
-			return results.map((row) => {
-				const projected: Partial<DatabaseSchemaType> = {};
-				for (const key of objectKeys(row)) {
-					if (select && !select[key]) continue;
-					if (omit && omit[key]) continue;
-					projected[key] = row[key];
-				}
-				return projected;
-			});
+			if (projection.mode === "none") {
+				return results;
+			}
+			return results.map((row) => this.applyProjectionToRow(row, projection));
 		}
 
 		private async executeFindMany(
-			args?: FindManyArgs<DatabaseSchemaType, ColumnNameToColumnType>,
-		): Promise<Partial<DatabaseSchemaType>[]> {
+			args?: FindManyArgs<
+				DatabaseSchemaType,
+				ColumnNameToColumnType,
+				ProjectionArgs<DatabaseSchemaType>
+			>,
+			projection: NormalizedProjection<
+				ProjectionPropertyName<DatabaseSchemaType>
+			> = { mode: "none", keys: new Set() },
+		): Promise<Array<Partial<DatabaseSchemaType>>> {
 			const params = this.buildQueryParams({
 				where: args?.where,
 				sortBy: args?.sortBy,
@@ -488,12 +566,19 @@ export class DatabaseClient<
 				columnNameToColumnProperties: this.camelPropertyNameToNameAndTypeMap,
 				validateSchema: (result) => this.validateDatabaseSchema(result),
 			});
-			return this.applyProjection(results, args?.select, args?.omit);
+			return this.applyProjection(results, projection);
 		}
 
 		private async executeFindManyPaginated(
-			args: FindManyArgs<DatabaseSchemaType, ColumnNameToColumnType>,
-		): Promise<PaginateResult<DatabaseSchemaType>> {
+			args: FindManyArgs<
+				DatabaseSchemaType,
+				ColumnNameToColumnType,
+				ProjectionArgs<DatabaseSchemaType>
+			>,
+			projection: NormalizedProjection<
+				ProjectionPropertyName<DatabaseSchemaType>
+			> = { mode: "none", keys: new Set() },
+		): Promise<PaginateResult<Partial<DatabaseSchemaType>>> {
 			const params = this.buildQueryParams({
 				where: args.where,
 				sortBy: args.sortBy,
@@ -507,14 +592,21 @@ export class DatabaseClient<
 				validateSchema: (result) => this.validateDatabaseSchema(result),
 			});
 			return {
-				data: this.applyProjection(results, args.select, args.omit),
+				data: this.applyProjection(results, projection),
 				nextCursor: response.next_cursor ?? null,
 				hasMore: response.has_more,
 			};
 		}
 
 		private async *createStreamIterable(
-			args: FindManyArgs<DatabaseSchemaType, ColumnNameToColumnType>,
+			args: FindManyArgs<
+				DatabaseSchemaType,
+				ColumnNameToColumnType,
+				ProjectionArgs<DatabaseSchemaType>
+			>,
+			projection: NormalizedProjection<
+				ProjectionPropertyName<DatabaseSchemaType>
+			> = { mode: "none", keys: new Set() },
 		): AsyncGenerator<Partial<DatabaseSchemaType>> {
 			const batchSize = args.stream ?? 100;
 			let cursor: string | undefined;
@@ -532,7 +624,7 @@ export class DatabaseClient<
 					columnNameToColumnProperties: this.camelPropertyNameToNameAndTypeMap,
 					validateSchema: (result) => this.validateDatabaseSchema(result),
 				});
-				const projected = this.applyProjection(results, args.select, args.omit);
+				const projected = this.applyProjection(results, projection);
 				for (const item of projected) {
 					yield item;
 				}
@@ -601,7 +693,9 @@ export class DatabaseClient<
 
 			// Check for missing expected properties (schema drift detection)
 			const missingProperties: string[] = [];
-			for (const propName in this.camelPropertyNameToNameAndTypeMap) {
+			for (const propName of objectKeys(
+				this.camelPropertyNameToNameAndTypeMap,
+			)) {
 				if (!remoteColumnNames.has(propName)) {
 					missingProperties.push(propName);
 				}
@@ -654,39 +748,41 @@ export class DatabaseClient<
 
 			// Validate against Zod schema
 			const parseResult = this.schema.safeParse(result);
-			if (parseResult.success) {
-				return;
-			}
+			if (parseResult.success === false) {
+				const parseError = parseResult.error;
+				const issueSignature = JSON.stringify(
+					parseError.issues.map((issue: SchemaValidationIssue) => ({
+						code: issue.code,
+						path: issue.path,
+						message: issue.message,
+					})),
+				);
 
-			const issueSignature = JSON.stringify(
-				parseResult.error.issues.map((issue) => ({
-					code: issue.code,
-					path: issue.path,
-					message: issue.message,
-				})),
-			);
-
-			if (this.loggedSchemaValidationIssues.has(issueSignature)) {
-				return;
-			}
-			this.loggedSchemaValidationIssues.add(issueSignature);
-			// biome-ignore lint/suspicious/noConsole: surface schema drift to the
-			// developer console
-			console.error(
-				`⚠️ ${AST_RUNTIME_CONSTANTS.PACKAGE_LOG_PREFIX} ${
-					AST_RUNTIME_CONSTANTS.SCHEMA_DRIFT_PREFIX
-				} for the following Notion database ${schemaLabel}
-			\nValidation issues: ${parseResult.error.issues
-				.map((issue) => `\`${issue.path.join(".")}: ${issue.message}\``)
+				if (this.loggedSchemaValidationIssues.has(issueSignature)) {
+					return;
+				}
+				this.loggedSchemaValidationIssues.add(issueSignature);
+				// biome-ignore lint/suspicious/noConsole: surface schema drift to the
+				// developer console
+				console.error(
+					`⚠️ ${AST_RUNTIME_CONSTANTS.PACKAGE_LOG_PREFIX} ${
+						AST_RUNTIME_CONSTANTS.SCHEMA_DRIFT_PREFIX
+					} for the following Notion database ${schemaLabel}
+			\nValidation issues: ${parseError.issues
+				.map(
+					(issue: SchemaValidationIssue) =>
+						`\`${issue.path.join(".")}: ${issue.message}\``,
+				)
 				.join(", ")}
 			\n\n✅ ${AST_RUNTIME_CONSTANTS.SCHEMA_DRIFT_HELP_MESSAGE}
 			`,
-			);
-			// biome-ignore lint/suspicious/noConsole: surface schema drift to the
-			// developer console
-			console.log("Validation details:", {
-				issues: parseResult.error.issues,
-				result: result,
-			});
+				);
+				// biome-ignore lint/suspicious/noConsole: surface schema drift to the
+				// developer console
+				console.log("Validation details:", {
+					issues: parseError.issues,
+					result: result,
+				});
+			}
 		}
 	}
