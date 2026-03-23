@@ -3,11 +3,7 @@ import type { FC, ReactNode } from "react";
 import { css, cx } from "../styled-system/css";
 import { githubUrl, siteTitle } from "./config";
 import { PageToc } from "./PageToc";
-import {
-	PAGE_LINK_ARROW_ATTR,
-	PAGE_LINK_ARROW_VALUE,
-	pageLinkArrowPandaCssKeys,
-} from "./siteClassNames";
+import { PAGE_LINK_ARROW_ATTR, PAGE_LINK_ARROW_VALUE } from "./siteClassNames";
 import {
 	type SitePage,
 	type SitePath,
@@ -249,11 +245,13 @@ const pageLinkBaseClass = css({
 	transitionProperty: "opacity",
 	transitionDuration: "220ms",
 	_hover: { opacity: 1 },
-	[pageLinkArrowPandaCssKeys.hover]: {
+	// Literal keys required so Panda static extraction emits these rules (computed keys from
+	// `siteClassNames` are not analyzed). Must match `PAGE_LINK_ARROW_ATTR` / `PAGE_LINK_ARROW_VALUE`.
+	"&:hover [data-page-link-arrow='true']": {
 		opacity: 1,
 		transform: "translateY(0)",
 	},
-	[pageLinkArrowPandaCssKeys.focusVisible]: {
+	"&:focus-visible [data-page-link-arrow='true']": {
 		opacity: 1,
 		transform: "translateY(0)",
 	},
