@@ -13,18 +13,21 @@ describe("query response pipeline", () => {
 	test("skips non-page objects and validates the first page with properties", () => {
 		let validateCalls = 0;
 
+		const dataSourceRow: PartialDataSourceObjectResponse = {
+			object: "data_source",
+			id: "ds-1",
+			properties: {},
+		};
+
 		const notionResponse: QueryDataSourceResponse = {
 			object: "list",
 			type: "page_or_data_source",
 			page_or_data_source: {},
 			results: [
-				{
-					object: "data_source",
-					id: "ds-1",
-				} as QueryDataSourceResponse["results"][number],
+				dataSourceRow,
 				page({
 					"Shop Name": databasePropertyValue.title("Blue Bottle"),
-				}) as QueryDataSourceResponse["results"][number],
+				}),
 			],
 			next_cursor: null,
 			has_more: false,

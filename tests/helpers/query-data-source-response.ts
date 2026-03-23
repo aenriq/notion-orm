@@ -25,10 +25,7 @@ export function emptyQueryDataSourceResponse(): QueryDataSourceResponse {
 	};
 }
 
-/**
- * Full list envelope with explicit `results` (and optional cursor / has_more).
- * Prefer this over ad hoc untyped list mocks.
- */
+/** List envelope with explicit `results` (and optional cursor / has_more). */
 export function queryDataSourceListResponse(
 	results: QueryDataSourceResponse["results"],
 	options?: QueryDataSourceListOptions,
