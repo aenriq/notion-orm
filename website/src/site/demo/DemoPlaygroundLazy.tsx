@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { DemoPlaygroundSkeleton } from "./DemoPlaygroundSkeleton";
 
 const LazyPlayground = dynamic(
 	() =>
@@ -9,7 +10,7 @@ const LazyPlayground = dynamic(
 		})),
 	{
 		ssr: false,
-		loading: () => null,
+		loading: () => <DemoPlaygroundSkeleton />,
 	},
 );
 

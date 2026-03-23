@@ -40,7 +40,7 @@ import Link from "next/link";
 import type { MutableRefObject, RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
 import { clouds } from "thememirror";
-import { css, cx } from "../../styled-system/css";
+import { cx } from "../../styled-system/css";
 import {
 	cmDemoSiteClassNames as cm,
 	cmDemoTooltipQuerySelectorList,
@@ -50,6 +50,21 @@ import {
 	siteMonoFontFamilyCssVar,
 } from "../siteClassNames";
 import { cmOneDarkTheme } from "./cmOneDarkTheme";
+import {
+	playgroundApiReferenceLinkClass as apiReferenceLinkClass,
+	demoPlaygroundPanelMeta,
+	playgroundEditorContainerClass as editorContainerClass,
+	playgroundEditorContainerPlaceholderClass as editorContainerPlaceholderClass,
+	playgroundFileLabelClass as fileLabelClass,
+	playgroundHeaderActionsClass as headerActionsClass,
+	playgroundHeaderBulletClass as headerBulletClass,
+	playgroundHeaderClass as headerClass,
+	playgroundHeaderTitleGroupClass as headerTitleGroupClass,
+	playgroundLoadingOverlayClass as loadingOverlayClass,
+	playgroundResetButtonClass as resetButtonClass,
+	playgroundSectionGapClass as sectionGapClass,
+	playgroundWrapperClass as wrapperClass,
+} from "./demoPlaygroundChrome";
 import { ideLikeTsAutocomplete } from "./ideLikeTsAutocomplete";
 import {
 	agentEntryFile,
@@ -80,126 +95,6 @@ function typeScriptLinterExtension() {
 		},
 	);
 }
-
-const wrapperClass = css({
-	mt: "8",
-	mb: "0",
-	bg: "transparent",
-});
-
-const sectionGapClass = css({
-	mt: "10",
-});
-
-const headerClass = css({
-	display: "flex",
-	alignItems: "center",
-	justifyContent: "space-between",
-	px: "4",
-	py: "2.5",
-	bg: "transparent",
-	fontSize: "xs",
-	color: "muted",
-	letterSpacing: "0.08em",
-});
-
-const fileLabelClass = css({
-	fontFamily: "mono",
-	fontSize: "xs",
-	color: "text",
-	fontWeight: "500",
-});
-
-const headerTitleGroupClass = css({
-	display: "flex",
-	alignItems: "baseline",
-	gap: "2",
-	flexWrap: "wrap",
-	minW: "0",
-});
-
-const headerBulletClass = css({
-	color: "muted",
-	userSelect: "none",
-});
-
-const apiReferenceLinkClass = css({
-	fontFamily: "inherit",
-	fontSize: "xs",
-	color: "muted",
-	textDecoration: "underline",
-	textUnderlineOffset: "2px",
-	letterSpacing: "0.06em",
-	_hover: {
-		color: "text",
-	},
-});
-
-const headerActionsClass = css({
-	display: "flex",
-	alignItems: "center",
-	gap: "3",
-});
-
-const resetButtonClass = css({
-	fontSize: "xs",
-	fontFamily: "inherit",
-	color: "muted",
-	backgroundColor: "transparent",
-	borderWidth: "1px",
-	borderStyle: "solid",
-	borderColor: "border",
-	borderRadius: "6px",
-	padding: "3px 8px",
-	cursor: "pointer",
-	transformOrigin: "center",
-	transform: "scale(1)",
-	transition:
-		"background-color 0.15s, border-color 0.15s, color 0.15s, transform 0.22s cubic-bezier(0.34, 1.45, 0.64, 1)",
-	_hover: {
-		color: "text",
-		borderColor: "muted",
-		backgroundColor: "background",
-		transform: "scale(1.05)",
-	},
-	_active: {
-		transform: "scale(0.96)",
-		transition:
-			"background-color 0.15s, border-color 0.15s, color 0.15s, transform 0.1s cubic-bezier(0.34, 1.8, 0.64, 1)",
-	},
-	_disabled: {
-		opacity: "0.45",
-		cursor: "not-allowed",
-		transform: "scale(1)",
-	},
-});
-
-const editorContainerClass = css({
-	position: "relative",
-	bg: "background",
-	borderWidth: "1px",
-	borderColor: "border",
-	borderRadius: "12px",
-	overflow: "hidden",
-});
-
-/** Only applied while loading/error so the shell doesn’t keep a 480px min-height once the editor sizes to content. */
-const editorContainerPlaceholderClass = css({
-	minHeight: "480px",
-});
-
-const loadingOverlayClass = css({
-	position: "absolute",
-	inset: "0",
-	display: "flex",
-	alignItems: "center",
-	justifyContent: "center",
-	bg: "background",
-	color: "muted",
-	fontFamily: "mono",
-	fontSize: "sm",
-	zIndex: 2,
-});
 
 const zodShimSource = `export interface ZodType<TOutput = unknown> {
 	optional(): ZodType<TOutput | undefined>;
@@ -900,22 +795,25 @@ export function DemoPlayground() {
 		</div>
 	);
 
+	const databasesPanel = demoPlaygroundPanelMeta[0];
+	const agentsPanel = demoPlaygroundPanelMeta[1];
+
 	return (
 		<>
 			{editorChrome({
-				label: "Databases",
-				resetAriaLabel: "Reset database demo to default code",
-				apiReferenceHref: "/api-reference#database-client",
-				apiReferenceAriaLabel: "Database client API reference",
+				label: databasesPanel.label,
+				resetAriaLabel: databasesPanel.resetAriaLabel,
+				apiReferenceHref: databasesPanel.apiReferenceHref,
+				apiReferenceAriaLabel: databasesPanel.apiReferenceAriaLabel,
 				entryFileKey: databaseEntryFile,
 				viewRef: databasesViewRef,
 				containerRef: databasesContainerRef,
 			})}
 			{editorChrome({
-				label: "Agents",
-				resetAriaLabel: "Reset agent demo to default code",
-				apiReferenceHref: "/api-reference#agent-client",
-				apiReferenceAriaLabel: "Agent client API reference",
+				label: agentsPanel.label,
+				resetAriaLabel: agentsPanel.resetAriaLabel,
+				apiReferenceHref: agentsPanel.apiReferenceHref,
+				apiReferenceAriaLabel: agentsPanel.apiReferenceAriaLabel,
 				entryFileKey: agentEntryFile,
 				viewRef: agentsViewRef,
 				containerRef: agentsContainerRef,
