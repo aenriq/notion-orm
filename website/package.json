@@ -16,7 +16,8 @@
 		"dev": "bun run build:assets && concurrently -n mdx,panda,next -c blue,magenta,green \"bun scripts/build-mdx-content.ts --watch\" \"bun x panda --watch\" \"bun run dev:next\"",
 		"start": "next start --port ${PORT:-3000}",
 		"deploy": "bun run build",
-		"typecheck": "bun run build:assets && tsc --noEmit"
+		"test": "bun test testing",
+		"typecheck": "bun run build:assets && bun run test && tsc --noEmit"
 	},
 	"devDependencies": {
 		"@mdx-js/loader": "^3.1.1",
@@ -26,8 +27,13 @@
 		"@types/react-dom": "^19.2.3",
 		"agentation": "^2.3.0",
 		"concurrently": "^9.2.1",
+		"mdast-util-to-string": "^4.0.0",
 		"remark-gfm": "^4.0.1",
+		"remark-mdx": "^3.1.1",
+		"remark-parse": "^11.0.0",
 		"typescript": "^5.9.3",
+		"unified": "^11.0.5",
+		"unist-util-visit": "^5.1.0",
 		"zod": "^4.3.6"
 	},
 	"dependencies": {
