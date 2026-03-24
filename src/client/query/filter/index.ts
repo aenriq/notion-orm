@@ -3,6 +3,7 @@ import type { camelPropertyNameToNameAndTypeMapType } from "../../DatabaseClient
 import type {
 	apiFilterType,
 	QueryFilter,
+	SchemaRecord,
 	SupportedNotionColumnType,
 } from "../../queryTypes";
 import { isFilterablePropertyType } from "../../queryTypes";
@@ -110,40 +111,43 @@ function buildLeafFilterObject(
 }
 
 export function transformQueryFilterToApiFilter<
-	DatabaseSchemaType extends Record<string, unknown>,
-	ColumnNameToColumnType extends Record<
-		keyof DatabaseSchemaType,
-		SupportedNotionColumnType
-	>,
->(
-	queryFilter: QueryFilter<DatabaseSchemaType, ColumnNameToColumnType>,
-	camelPropertyNameToNameAndTypeMap: camelPropertyNameToNameAndTypeMapType,
-): apiFilterType {
-	if ("and" in queryFilter && Array.isArray(queryFilter.and)) {
-		const andFilter = buildCompoundFilter("and", queryFilter.and, (filter) =>
-			transformQueryFilterToApiFilter(
-				filter,
-				camelPropertyNameToNameAndTypeMap,
-			),
-		);
-		if (isApiFilter(andFilter)) {
-			return andFilter;
+		DatabaseSchemaType extends SchemaRecord,
+		ColumnNameToColumnType extends Record<
+			keyof DatabaseSchemaType,
+			SupportedNotionColumnType
+		>,
+	>(
+		queryFilter: QueryFilter<DatabaseSchemaType, ColumnNameToColumnType>,
+		camelPropertyNameToNameAndTypeMap: camelPropertyNameToNameAndTypeMapType,
+	): apiFilterType {
+		if ("and" in queryFilter && Array.isArray(queryFilter.and)) {
+			const andFilter = buildCompoundFilter("and", queryFilter.and, (filter) =>
+				transformQueryFilterToApiFilter(
+					filter,
+					camelPropertyNameToNameAndTypeMap,
+				),
+			);
+			if (isApiFilter(andFilter)) {
+				return andFilter;
+			}
+			return undefined;
 		}
-		return undefined;
-	}
 
-	if ("or" in queryFilter && Array.isArray(queryFilter.or)) {
-		const orFilter = buildCompoundFilter("or", queryFilter.or, (filter) =>
-			transformQueryFilterToApiFilter(
-				filter,
-				camelPropertyNameToNameAndTypeMap,
-			),
-		);
-		if (isApiFilter(orFilter)) {
-			return orFilter;
+		if ("or" in queryFilter && Array.isArray(queryFilter.or)) {
+			const orFilter = buildCompoundFilter("or", queryFilter.or, (filter) =>
+				transformQueryFilterToApiFilter(
+					filter,
+					camelPropertyNameToNameAndTypeMap,
+				),
+			);
+			if (isApiFilter(orFilter)) {
+				return orFilter;
+			}
+			return undefined;
 		}
-		return undefined;
-	}
 
-	return buildLeafFilterObject(queryFilter, camelPropertyNameToNameAndTypeMap);
-}
+		return buildLeafFilterObject(
+			queryFilter,
+			camelPropertyNameToNameAndTypeMap,
+		);
+	}

@@ -1,9 +1,9 @@
-import { AgentClient } from "../../src/client/AgentClient";
+import type { AgentClient } from "../../src/client/AgentClient";
 import type { Query } from "../../src/client/queryTypes";
 import type { Expect } from "./helpers/assert";
 
 type _queryExportContract = Expect<
-	Query<Record<string, unknown>, Record<string, never>> extends object
+	Query<Record<string, never>, Record<string, never>> extends object
 		? true
 		: false
 >;

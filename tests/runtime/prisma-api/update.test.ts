@@ -87,14 +87,18 @@ describe("update", () => {
 		const client = createClient();
 		await expect(
 			client.update({ where: { id: "" }, properties: { rating: 1 } }),
-		).rejects.toThrow("update() requires 'where.id'");
+		).rejects.toThrow(
+			"[@haustle/notion-orm] update(): where.id must be a non-empty string (Notion page id).",
+		);
 	});
 
 	test("throws when properties is empty", async () => {
 		const client = createClient();
 		await expect(
 			client.update({ where: { id: "page-1" }, properties: {} }),
-		).rejects.toThrow("at least one property");
+		).rejects.toThrow(
+			"[@haustle/notion-orm] update(): pass at least one key in properties.",
+		);
 	});
 
 	test("propagates API errors", async () => {

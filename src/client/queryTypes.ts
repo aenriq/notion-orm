@@ -26,6 +26,13 @@ export type DatabasePropertyValue =
 	| { name: string; url: string }[]
 	| { start: string; end?: string | null };
 
+export type SchemaRecord = Record<string, DatabasePropertyValue>;
+
+export type ColumnTypeMap<Schema extends SchemaRecord> = Record<
+	keyof Schema,
+	SupportedNotionColumnType
+>;
+
 export const SUPPORTED_PROPERTY_TYPES = {
 	formula: false,
 	files: true,
@@ -140,18 +147,18 @@ type CheckBoxPropertyFilters = {
 	does_not_equal: boolean;
 };
 
-//
+type SchemaOptionUnion<T> = T extends readonly (infer U)[] ? U : T;
+
 type SelectPropertyFilters<T> = {
-	equals: (T extends Array<any> ? T[number] : T) | (string & {});
-	does_not_equal: (T extends Array<any> ? T[number] : T) | (string & {});
+	equals: SchemaOptionUnion<T> | string;
+	does_not_equal: SchemaOptionUnion<T> | string;
 	is_empty: true;
 	is_not_empty: true;
 };
 
-// pay in array --> need to turn into union
 type MultiSelectPropertyFilters<T> = {
-	contains: (T extends Array<any> ? T[number] : T) | (string & {});
-	does_not_contain: (T extends Array<any> ? T[number] : T) | (string & {});
+	contains: SchemaOptionUnion<T> | string;
+	does_not_contain: SchemaOptionUnion<T> | string;
 	is_empty: true;
 	is_not_empty: true;
 };
@@ -213,55 +220,14 @@ export type FilterOptions<T = []> = {
  * Types to build query object user types out
  */
 
-type ColumnNameToNotionColumnType<Schema extends Record<string, unknown>> =
-	Record<keyof Schema, SupportedNotionColumnType>;
-
 type FilterValueForColumnType<
 	PropertyValue,
 	ColumnType extends SupportedNotionColumnType,
-> = ColumnType extends "rich_text"
-	? Partial<TextPropertyFilters>
-	: ColumnType extends "title"
-		? Partial<TextPropertyFilters>
-		: ColumnType extends "number"
-			? Partial<NumberPropertyFilters>
-			: ColumnType extends "checkbox"
-				? Partial<CheckBoxPropertyFilters>
-				: ColumnType extends "select"
-					? Partial<SelectPropertyFilters<NonNullable<PropertyValue>>>
-					: ColumnType extends "multi_select"
-						? Partial<MultiSelectPropertyFilters<NonNullable<PropertyValue>>>
-						: ColumnType extends "url"
-							? Partial<TextPropertyFilters>
-							: ColumnType extends "date"
-								? Partial<DatePropertyFilters>
-								: ColumnType extends "status"
-									? Partial<StatusPropertyFilters<NonNullable<PropertyValue>>>
-									: ColumnType extends "email"
-										? Partial<TextPropertyFilters>
-										: ColumnType extends "phone_number"
-											? Partial<TextPropertyFilters>
-											: ColumnType extends "files"
-												? Partial<FilesPropertyFilters>
-												: ColumnType extends "people"
-													? Partial<PeoplePropertyFilters>
-													: ColumnType extends "relation"
-														? Partial<RelationPropertyFilters>
-														: ColumnType extends "created_by"
-															? Partial<CreatedByPropertyFilters>
-															: ColumnType extends "last_edited_by"
-																? Partial<LastEditedByPropertyFilters>
-																: ColumnType extends "created_time"
-																	? Partial<CreatedTimePropertyFilters>
-																	: ColumnType extends "last_edited_time"
-																		? Partial<LastEditedTimePropertyFilters>
-																		: ColumnType extends "unique_id"
-																			? Partial<UniqueIdPropertyFilters>
-																			: never;
+> = Partial<FilterOptions<NonNullable<PropertyValue>>[ColumnType]>;
 
 type FilterValueForProperty<
-	Schema extends Record<string, unknown>,
-	ColumnNameToColumnType extends ColumnNameToNotionColumnType<Schema>,
+	Schema extends SchemaRecord,
+	ColumnNameToColumnType extends ColumnTypeMap<Schema>,
 	PropertyName extends keyof Schema,
 > = FilterValueForColumnType<
 	Schema[PropertyName],
@@ -269,8 +235,8 @@ type FilterValueForProperty<
 >;
 
 export type SingleFilter<
-		Schema extends Record<string, unknown>,
-		ColumnNameToColumnType extends ColumnNameToNotionColumnType<Schema>,
+		Schema extends SchemaRecord,
+		ColumnNameToColumnType extends ColumnTypeMap<Schema>,
 	> = {
 		[PropertyName in keyof Schema]?: FilterValueForProperty<
 			Schema,
@@ -280,11 +246,8 @@ export type SingleFilter<
 	};
 
 export type CompoundFilters<
-		Schema extends Record<string, unknown>,
-		ColumnNameToColumnType extends Record<
-			keyof Schema,
-			SupportedNotionColumnType
-		>,
+		Schema extends SchemaRecord,
+		ColumnNameToColumnType extends ColumnTypeMap<Schema>,
 	> =
 		| {
 				and: Array<
@@ -300,14 +263,11 @@ export type CompoundFilters<
 		  };
 
 export type QueryFilter<
-	Schema extends Record<string, unknown>,
-	ColumnNameToColumnType extends Record<
-		keyof Schema,
-		SupportedNotionColumnType
-	>,
-> =
-	| SingleFilter<Schema, ColumnNameToColumnType>
-	| CompoundFilters<Schema, ColumnNameToColumnType>;
+		Schema extends SchemaRecord,
+		ColumnNameToColumnType extends ColumnTypeMap<Schema>,
+	> =
+		| SingleFilter<Schema, ColumnNameToColumnType>
+		| CompoundFilters<Schema, ColumnNameToColumnType>;
 
 export type QuerySortDirection = NotionPropertySort["direction"];
 
@@ -329,7 +289,7 @@ export type QuerySort<
 > = Array<QueryPropertySort<ColumnNameToColumnType> | QueryTimestampSort>;
 
 type QueryBase<
-	Y extends Record<string, any>,
+	Y extends SchemaRecord,
 	T extends Record<keyof Y, SupportedNotionColumnType>,
 > = {
 	filter?: QueryFilter<Y, T>;
@@ -337,23 +297,23 @@ type QueryBase<
 };
 
 export type QueryWithoutRawResponse<
-	Y extends Record<string, any>,
-	T extends Record<keyof Y, SupportedNotionColumnType>,
-> = QueryBase<Y, T> & {
-	includeRawResponse?: false | undefined;
-};
+		Y extends SchemaRecord,
+		T extends Record<keyof Y, SupportedNotionColumnType>,
+	> = QueryBase<Y, T> & {
+		includeRawResponse?: false | undefined;
+	};
 
 export type QueryWithRawResponse<
-	Y extends Record<string, any>,
-	T extends Record<keyof Y, SupportedNotionColumnType>,
-> = QueryBase<Y, T> & {
-	includeRawResponse: true;
-};
+		Y extends SchemaRecord,
+		T extends Record<keyof Y, SupportedNotionColumnType>,
+	> = QueryBase<Y, T> & {
+		includeRawResponse: true;
+	};
 
 export type Query<
-	Y extends Record<string, any>,
-	T extends Record<keyof Y, SupportedNotionColumnType>,
-> = QueryWithoutRawResponse<Y, T> | QueryWithRawResponse<Y, T>;
+		Y extends SchemaRecord,
+		T extends Record<keyof Y, SupportedNotionColumnType>,
+	> = QueryWithoutRawResponse<Y, T> | QueryWithRawResponse<Y, T>;
 
 export type apiFilterQuery = {
 	filter?: apiSingleFilter | apiAndFilter | apiOrFilter;
@@ -385,13 +345,15 @@ export type SimpleQueryResponse<DatabaseSchema> =
 	| QueryResponseWithoutRawResponse<DatabaseSchema>
 	| QueryResponseWithRawResponse<DatabaseSchema>;
 
-export type ProjectionPropertyName<Schema extends Record<string, any>> =
-	Extract<keyof Schema, string | number>;
+export type ProjectionPropertyName<Schema extends SchemaRecord> = Extract<
+	keyof Schema,
+	string | number
+>;
 
-export type ProjectionPropertyList<Schema extends Record<string, any>> =
+export type ProjectionPropertyList<Schema extends SchemaRecord> =
 	readonly ProjectionPropertyName<Schema>[];
 
-export type ProjectionArgs<Schema extends Record<string, any>> =
+export type ProjectionArgs<Schema extends SchemaRecord> =
 	| {
 			select: ProjectionPropertyList<Schema>;
 			omit?: never;
@@ -406,7 +368,7 @@ export type ProjectionArgs<Schema extends Record<string, any>> =
 	  };
 
 type ResolvedProjectionArgs<
-	Schema extends Record<string, any>,
+	Schema extends SchemaRecord,
 	ProjectionSelection extends ProjectionArgs<Schema> | undefined,
 > = [ProjectionSelection] extends [undefined]
 	? ProjectionArgs<Schema>
@@ -414,30 +376,30 @@ type ResolvedProjectionArgs<
 		? ProjectionSelection
 		: ProjectionArgs<Schema>;
 
-/** Row shape after projection; tuple-wrapped checks avoid distributing over `ProjectionArgs<Schema>` when inference yields that union (e.g. find with only `where`), which would collapse `keyof` to `never`. */
+/** Projection row shape; tuple form avoids `keyof` collapsing when `ProjectionArgs` is a union. */
 export type ProjectedFromArgs<
-	Schema extends Record<string, any>,
-	ProjectionSelection extends ProjectionArgs<Schema> | undefined = undefined,
-> = [ProjectionSelection] extends [undefined]
-	? Partial<Schema>
-	: [ProjectionSelection] extends [
-				{
-					select: infer SelectedPropertyNames extends
-						ProjectionPropertyList<Schema>;
-				},
-			]
-		? Partial<Pick<Schema, SelectedPropertyNames[number]>>
+		Schema extends SchemaRecord,
+		ProjectionSelection extends ProjectionArgs<Schema> | undefined = undefined,
+	> = [ProjectionSelection] extends [undefined]
+		? Partial<Schema>
 		: [ProjectionSelection] extends [
 					{
-						omit: infer OmittedPropertyNames extends
+						select: infer SelectedPropertyNames extends
 							ProjectionPropertyList<Schema>;
 					},
 				]
-			? Partial<Omit<Schema, OmittedPropertyNames[number]>>
-			: Partial<Schema>;
+			? Partial<Pick<Schema, SelectedPropertyNames[number]>>
+			: [ProjectionSelection] extends [
+						{
+							omit: infer OmittedPropertyNames extends
+								ProjectionPropertyList<Schema>;
+						},
+					]
+				? Partial<Omit<Schema, OmittedPropertyNames[number]>>
+				: Partial<Schema>;
 
 type ProjectionSelectionFromPropertyLists<
-	Schema extends Record<string, any>,
+	Schema extends SchemaRecord,
 	SelectedPropertyNames extends ProjectionPropertyList<Schema> | undefined,
 	OmittedPropertyNames extends ProjectionPropertyList<Schema> | undefined,
 > = SelectedPropertyNames extends ProjectionPropertyList<Schema>
@@ -447,28 +409,25 @@ type ProjectionSelectionFromPropertyLists<
 		: undefined;
 
 export type ProjectedRow<
-	Schema extends Record<string, any>,
-	SelectedPropertyNames extends
-		| ProjectionPropertyList<Schema>
-		| undefined = undefined,
-	OmittedPropertyNames extends
-		| ProjectionPropertyList<Schema>
-		| undefined = undefined,
-> = ProjectedFromArgs<
-	Schema,
-	ProjectionSelectionFromPropertyLists<
+		Schema extends SchemaRecord,
+		SelectedPropertyNames extends
+			| ProjectionPropertyList<Schema>
+			| undefined = undefined,
+		OmittedPropertyNames extends
+			| ProjectionPropertyList<Schema>
+			| undefined = undefined,
+	> = ProjectedFromArgs<
 		Schema,
-		SelectedPropertyNames,
-		OmittedPropertyNames
-	>
->;
+		ProjectionSelectionFromPropertyLists<
+			Schema,
+			SelectedPropertyNames,
+			OmittedPropertyNames
+		>
+	>;
 
 export type FindManyArgs<
-		Schema extends Record<string, any>,
-		ColumnNameToColumnType extends Record<
-			keyof Schema,
-			SupportedNotionColumnType
-		>,
+		Schema extends SchemaRecord,
+		ColumnNameToColumnType extends ColumnTypeMap<Schema>,
 		ProjectionSelection extends ProjectionArgs<Schema> | undefined = undefined,
 	> = {
 		where?: QueryFilter<Schema, ColumnNameToColumnType>;
@@ -479,11 +438,8 @@ export type FindManyArgs<
 	} & ResolvedProjectionArgs<Schema, ProjectionSelection>;
 
 export type FindFirstArgs<
-		Schema extends Record<string, any>,
-		ColumnNameToColumnType extends Record<
-			keyof Schema,
-			SupportedNotionColumnType
-		>,
+		Schema extends SchemaRecord,
+		ColumnNameToColumnType extends ColumnTypeMap<Schema>,
 		ProjectionSelection extends ProjectionArgs<Schema> | undefined = undefined,
 	> = {
 		where?: QueryFilter<Schema, ColumnNameToColumnType>;
@@ -491,11 +447,11 @@ export type FindFirstArgs<
 	} & ResolvedProjectionArgs<Schema, ProjectionSelection>;
 
 export type FindUniqueArgs<
-	Schema extends Record<string, any>,
-	ProjectionSelection extends ProjectionArgs<Schema> | undefined = undefined,
-> = {
-	where: { id: string };
-} & ResolvedProjectionArgs<Schema, ProjectionSelection>;
+		Schema extends SchemaRecord,
+		ProjectionSelection extends ProjectionArgs<Schema> | undefined = undefined,
+	> = {
+		where: { id: string };
+	} & ResolvedProjectionArgs<Schema, ProjectionSelection>;
 
 export type PaginateResult<Row extends object> = {
 	data: Row[];
@@ -504,52 +460,52 @@ export type PaginateResult<Row extends object> = {
 };
 
 export type CountArgs<
-	Y extends Record<string, any>,
-	T extends Record<keyof Y, SupportedNotionColumnType>,
-> = {
-	where?: QueryFilter<Y, T>;
-};
-
-export type CreateArgs<Y extends Record<string, DatabasePropertyValue>> = {
-		properties: Y;
-		icon?: CreatePageParameters["icon"];
-		cover?: CreatePageParameters["cover"];
-		markdown?: CreatePageParameters["markdown"];
+		Y extends SchemaRecord,
+		T extends Record<keyof Y, SupportedNotionColumnType>,
+	> = {
+		where?: QueryFilter<Y, T>;
 	};
 
-export type CreateManyArgs<Y extends Record<string, DatabasePropertyValue>> = {
+export type CreateArgs<Y extends SchemaRecord> = {
+	properties: Y;
+	icon?: CreatePageParameters["icon"];
+	cover?: CreatePageParameters["cover"];
+	markdown?: CreatePageParameters["markdown"];
+};
+
+export type CreateManyArgs<Y extends SchemaRecord> = {
 	properties: Y[];
 };
 
-export type UpdateArgs<Y extends Record<string, DatabasePropertyValue>> = {
+export type UpdateArgs<Y extends SchemaRecord> = {
 	where: { id: string };
 	properties: Partial<Y>;
 };
 
 export type UpdateManyArgs<
-	Y extends Record<string, any>,
-	T extends Record<keyof Y, SupportedNotionColumnType>,
-> = {
-	where: QueryFilter<Y, T>;
-	properties: Partial<Y>;
-};
+		Y extends SchemaRecord,
+		T extends Record<keyof Y, SupportedNotionColumnType>,
+	> = {
+		where: QueryFilter<Y, T>;
+		properties: Partial<Y>;
+	};
 
 export type UpsertArgs<
-	Y extends Record<string, any>,
-	T extends Record<keyof Y, SupportedNotionColumnType>,
-> = {
-	where: QueryFilter<Y, T>;
-	create: Y;
-	update: Partial<Y>;
-};
+		Y extends SchemaRecord,
+		T extends Record<keyof Y, SupportedNotionColumnType>,
+	> = {
+		where: QueryFilter<Y, T>;
+		create: Y;
+		update: Partial<Y>;
+	};
 
 export type DeleteArgs = {
 	where: { id: string };
 };
 
 export type DeleteManyArgs<
-	Y extends Record<string, any>,
-	T extends Record<keyof Y, SupportedNotionColumnType>,
-> = {
-	where: QueryFilter<Y, T>;
-};
+		Y extends SchemaRecord,
+		T extends Record<keyof Y, SupportedNotionColumnType>,
+	> = {
+		where: QueryFilter<Y, T>;
+	};

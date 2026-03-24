@@ -7,6 +7,7 @@ import type {
 	FilterableNotionColumnType,
 	QueryFilter,
 	QuerySort,
+	SchemaRecord,
 	SupportedNotionColumnType,
 } from "../queryTypes";
 
@@ -69,12 +70,12 @@ export type FilterValueGuardRegistry = {
 };
 
 export type QueryFilterInput<
-	DatabaseSchemaType extends Record<string, unknown>,
-	ColumnNameToColumnType extends Record<
-		keyof DatabaseSchemaType,
-		SupportedNotionColumnType
-	>,
-> = QueryFilter<DatabaseSchemaType, ColumnNameToColumnType>;
+		DatabaseSchemaType extends SchemaRecord,
+		ColumnNameToColumnType extends Record<
+			keyof DatabaseSchemaType,
+			SupportedNotionColumnType
+		>,
+	> = QueryFilter<DatabaseSchemaType, ColumnNameToColumnType>;
 
 export type QuerySortInput<
 	ColumnNameToColumnType extends Record<string, SupportedNotionColumnType>,

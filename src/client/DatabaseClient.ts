@@ -233,7 +233,10 @@ export class DatabaseClient<
 				ColumnNameToColumnType,
 				ProjectionArgs<DatabaseSchemaType>
 			>,
-		): AsyncIterable<unknown> | Promise<unknown> {
+		):
+			| AsyncIterable<Partial<DatabaseSchemaType>>
+			| Promise<PaginateResult<Partial<DatabaseSchemaType>>>
+			| Promise<Array<Partial<DatabaseSchemaType>>> {
 			const projection = this.normalizeProjection(args);
 			if (args?.stream !== undefined) {
 				return this.createStreamIterable(args, projection);
@@ -293,7 +296,7 @@ export class DatabaseClient<
 			const projection = this.normalizeProjection(args);
 			if (!args?.where?.id) {
 				throw new Error(
-					`${AST_RUNTIME_CONSTANTS.PACKAGE_LOG_PREFIX} findUnique() requires 'where.id' to be a non-empty string.`,
+					`${AST_RUNTIME_CONSTANTS.PACKAGE_LOG_PREFIX} findUnique(): where.id must be a non-empty string (Notion page id).`,
 				);
 			}
 			try {
@@ -361,12 +364,12 @@ export class DatabaseClient<
 		public async update(args: UpdateArgs<DatabaseSchemaType>): Promise<void> {
 			if (!args?.where?.id) {
 				throw new Error(
-					`${AST_RUNTIME_CONSTANTS.PACKAGE_LOG_PREFIX} update() requires 'where.id' to be a non-empty string.`,
+					`${AST_RUNTIME_CONSTANTS.PACKAGE_LOG_PREFIX} update(): where.id must be a non-empty string (Notion page id).`,
 				);
 			}
 			if (!args.properties || objectKeys(args.properties).length === 0) {
 				throw new Error(
-					`${AST_RUNTIME_CONSTANTS.PACKAGE_LOG_PREFIX} update() requires 'properties' to contain at least one property.`,
+					`${AST_RUNTIME_CONSTANTS.PACKAGE_LOG_PREFIX} update(): pass at least one key in properties.`,
 				);
 			}
 			const properties = this.buildProperties(args.properties);
@@ -409,7 +412,7 @@ export class DatabaseClient<
 		public async delete(args: DeleteArgs): Promise<void> {
 			if (!args?.where?.id) {
 				throw new Error(
-					`${AST_RUNTIME_CONSTANTS.PACKAGE_LOG_PREFIX} delete() requires 'where.id' to be a non-empty string.`,
+					`${AST_RUNTIME_CONSTANTS.PACKAGE_LOG_PREFIX} delete(): where.id must be a non-empty string (Notion page id).`,
 				);
 			}
 			await this.client.pages.update({
@@ -498,7 +501,7 @@ export class DatabaseClient<
 			const hasOmit = omit != null && omit.length > 0;
 			if (hasSelect && hasOmit) {
 				throw new Error(
-					`${AST_RUNTIME_CONSTANTS.PACKAGE_LOG_PREFIX} Cannot use both 'select' and 'omit' at the same time.`,
+					`${AST_RUNTIME_CONSTANTS.PACKAGE_LOG_PREFIX} Projection: use either select or omit, not both.`,
 				);
 			}
 			if (hasSelect) {

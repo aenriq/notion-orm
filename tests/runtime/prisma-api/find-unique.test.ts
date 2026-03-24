@@ -96,7 +96,9 @@ describe("findUnique", () => {
 				select: ["shopName"] as const,
 				omit: ["rating"] as const,
 			}),
-		).rejects.toThrow("Cannot use both 'select' and 'omit'");
+		).rejects.toThrow(
+			"[@haustle/notion-orm] Projection: use either select or omit, not both.",
+		);
 	});
 
 	test("returns null on 404", async () => {
@@ -123,7 +125,7 @@ describe("findUnique", () => {
 	test("throws when id is missing", async () => {
 		const client = createClient();
 		await expect(client.findUnique({ where: { id: "" } })).rejects.toThrow(
-			"findUnique() requires 'where.id'",
+			"[@haustle/notion-orm] findUnique(): where.id must be a non-empty string (Notion page id).",
 		);
 	});
 });

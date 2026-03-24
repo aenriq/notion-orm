@@ -260,7 +260,9 @@ describe("findMany", () => {
 				select: ["shopName"] as const,
 				omit: ["notes"] as const,
 			}),
-		).toThrow("Cannot use both 'select' and 'omit'");
+		).toThrow(
+			"[@haustle/notion-orm] Projection: use either select or omit, not both.",
+		);
 	});
 
 	test("stream returns AsyncIterable that paginates", async () => {

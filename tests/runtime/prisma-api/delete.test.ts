@@ -60,9 +60,9 @@ describe("delete", () => {
 
 	test("throws when id is missing", async () => {
 		const client = createClient();
-		await expect(
-			client.delete({ where: { id: "" } }),
-		).rejects.toThrow("delete() requires 'where.id'");
+		await expect(client.delete({ where: { id: "" } })).rejects.toThrow(
+			"[@haustle/notion-orm] delete(): where.id must be a non-empty string (Notion page id).",
+		);
 	});
 
 	test("propagates API errors", async () => {

@@ -33,12 +33,18 @@ const paginatedSelectedPromise = client.findMany({
 	select: ["shopName"] as const,
 });
 
+const streamIterable = client.findMany({ stream: 10 });
+
 type AllRows = Awaited<typeof allRowsPromise>;
 type SelectedRows = Awaited<typeof selectedRowsPromise>;
 type OmittedRows = Awaited<typeof omittedRowsPromise>;
 type FirstSelected = Awaited<typeof firstSelectedPromise>;
 type UniqueOmitted = Awaited<typeof uniqueOmittedPromise>;
 type PaginatedSelected = Awaited<typeof paginatedSelectedPromise>;
+
+type StreamElement = typeof streamIterable extends AsyncIterable<infer E>
+	? E
+	: never;
 
 type _allRowsContract = Expect<Equal<AllRows, Array<Partial<Schema>>>>;
 
@@ -61,3 +67,5 @@ type _uniqueOmittedContract = Expect<
 type _paginatedSelectedContract = Expect<
 	Equal<PaginatedSelected, PaginateResult<Partial<Pick<Schema, "shopName">>>>
 >;
+
+type _streamContract = Expect<Equal<StreamElement, Partial<Schema>>>;
