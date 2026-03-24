@@ -26,7 +26,7 @@ import {
 	createQueryTypeExport,
 	toPascalCase,
 } from "../shared/ast-builders";
-import { AST_IMPORT_PATHS, DATABASES_DIR } from "../shared/constants";
+import { AST_FS_PATHS, AST_IMPORT_PATHS } from "../shared/constants";
 import {
 	emitTsAndJsArtifacts,
 	printTsNodes,
@@ -241,14 +241,15 @@ export async function createTypescriptFileForDatabase(
 	const { nodes, databaseName, databaseModuleName, databaseId } =
 		buildDatabaseModuleNodes(dataSourceResponse);
 
-	if (!fs.existsSync(DATABASES_DIR)) {
-		fs.mkdirSync(DATABASES_DIR, { recursive: true });
+	const databasesDir = AST_FS_PATHS.DATABASES_DIR;
+	if (!fs.existsSync(databasesDir)) {
+		fs.mkdirSync(databasesDir, { recursive: true });
 	}
 
 	emitTsAndJsArtifacts({
 		nodes,
-		tsPath: path.resolve(DATABASES_DIR, `${databaseModuleName}.ts`),
-		jsPath: path.resolve(DATABASES_DIR, `${databaseModuleName}.js`),
+		tsPath: path.resolve(databasesDir, `${databaseModuleName}.ts`),
+		jsPath: path.resolve(databasesDir, `${databaseModuleName}.js`),
 		module: TS_EMIT_OPTIONS_GENERATED.module,
 		target: TS_EMIT_OPTIONS_GENERATED.target,
 	});

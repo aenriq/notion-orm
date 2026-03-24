@@ -12,18 +12,15 @@ import {
 	readAgentMetadataFromDisk,
 	readDatabaseMetadata,
 } from "../shared/cached-metadata";
-import {
-	AST_FS_PATHS,
-	AST_RUNTIME_CONSTANTS,
-	DATABASES_DIR,
-} from "../shared/constants";
+import { AST_FS_PATHS, AST_RUNTIME_CONSTANTS } from "../shared/constants";
 import { updateSourceIndexFile } from "../shared/emit/orm-index-emitter";
 import { emitRegistryModuleArtifacts } from "../shared/emit/registry-emitter";
 import { createTypescriptFileForDatabase } from "./database-file-writer";
 
 function writeDatabaseMetadata(metadata: CachedEntityMetadata[]): void {
-	if (!fs.existsSync(DATABASES_DIR)) {
-		fs.mkdirSync(DATABASES_DIR, { recursive: true });
+	const databasesDir = AST_FS_PATHS.DATABASES_DIR;
+	if (!fs.existsSync(databasesDir)) {
+		fs.mkdirSync(databasesDir, { recursive: true });
 	}
 	fs.writeFileSync(
 		AST_FS_PATHS.metadataFile,
@@ -61,7 +58,7 @@ export const createDatabaseTypes = async (
 
 	if (isFullGenerate) {
 		// Start from a clean generated directory so removed databases do not linger.
-		fs.rmSync(DATABASES_DIR, { recursive: true, force: true });
+		fs.rmSync(AST_FS_PATHS.DATABASES_DIR, { recursive: true, force: true });
 		metadataMap = new Map();
 	} else {
 		if (targetIds.length === 0) {
