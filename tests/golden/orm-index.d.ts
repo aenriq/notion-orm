@@ -1,4 +1,4 @@
-import type { taskDb } from "../db/taskDb";
+import type { taskDb } from "../databases/taskDb";
 import type { mealAgent } from "../agents/mealAgent";
 import {
 	NotionORMBase,

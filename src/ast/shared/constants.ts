@@ -7,10 +7,13 @@ import path from "path";
 
 /**
  * Top-level directory name for CLI-generated artifacts in consuming projects
- * (`notion/src`, `notion/db`, `notion/agents`). Distinct from this package's
+ * (`notion/src`, `notion/databases`, `notion/agents`). Distinct from this package's
  * npm `outDir` (`build/`), which remains `@haustle/notion-orm/build/...`.
  */
 export const PROJECT_CODEGEN_DIR_NAME = "notion" as const;
+
+/** Subdirectory under the codegen root for generated database modules. */
+export const PROJECT_DATABASES_DIR_NAME = "databases" as const;
 
 /**
  * Resolve generated artifact paths from the current project root, not from the
@@ -21,9 +24,9 @@ function getProjectBuildDir(): string {
 	return path.resolve(process.cwd(), PROJECT_CODEGEN_DIR_NAME);
 }
 
-/** Canonical output directory for generated database modules (`notion/db/*`). */
+/** Canonical output directory for generated database modules (`notion/databases/*`). */
 function getDatabasesDir(): string {
-	return path.join(getProjectBuildDir(), "db");
+	return path.join(getProjectBuildDir(), PROJECT_DATABASES_DIR_NAME);
 }
 
 /** Canonical output directory for generated agent modules (`notion/agents/*`). */
@@ -99,7 +102,7 @@ export const AST_IMPORT_PATHS = {
 	ZOD: "zod",
 
 	databaseClass(name: string): string {
-		return `../db/${name}`;
+		return `../${PROJECT_DATABASES_DIR_NAME}/${name}`;
 	},
 
 	agentClass(name: string): string {
@@ -141,14 +144,14 @@ export const PLAYGROUND_PATHS = {
 	BUILD_INDEX: `${PROJECT_CODEGEN_DIR_NAME}/src/index.ts`,
 
 	databaseModule(name: string): string {
-		return `${PROJECT_CODEGEN_DIR_NAME}/db/${name}.ts`;
+		return `${PROJECT_CODEGEN_DIR_NAME}/${PROJECT_DATABASES_DIR_NAME}/${name}.ts`;
 	},
 	agentModule(name: string): string {
 		return `${PROJECT_CODEGEN_DIR_NAME}/agents/${name}.ts`;
 	},
 
 	databaseImport(name: string): string {
-		return `../db/${name}.ts`;
+		return `../${PROJECT_DATABASES_DIR_NAME}/${name}.ts`;
 	},
 	agentImport(name: string): string {
 		return `../agents/${name}.ts`;

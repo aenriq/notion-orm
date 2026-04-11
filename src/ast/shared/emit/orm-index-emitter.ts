@@ -22,7 +22,7 @@ import { TS_EMIT_INTEROP, TS_EMIT_OPTIONS_DEFAULT } from "./ts-emit-options";
  * (for example: `coffeeShopDirectory`, `foodManager`).
  * It is used as both:
  * - the imported factory symbol name
- * - the generated module filename in import paths (`../db/<name>`, `../agents/<name>`)
+ * - the generated module filename in import paths (`../databases/<name>`, `../agents/<name>`)
  */
 export interface OrmEntityMetadata {
 	name: string;
@@ -121,7 +121,7 @@ function createBaseValueExportDeclaration(args: {
 
 /**
  * Creates imports for generated entity factory functions.
- * Example: `import { coffeeShopDirectory } from "../db/coffeeShopDirectory";`
+ * Example: `import { coffeeShopDirectory } from "../databases/coffeeShopDirectory";`
  */
 function createEntityImportStatements(args: {
 	entities: OrmEntityMetadata[];
@@ -477,7 +477,7 @@ export function buildOrmIndexDeclarationAst(args: {
 
 /**
  * Emits all NotionORM index artifacts (runtime TS/JS + declaration .d.ts).
- * This glues generated `db/*` and `agents/*` factory modules into one entrypoint.
+ * This glues generated `databases/*` and `agents/*` factory modules into one entrypoint.
  */
 export function emitOrmIndexArtifacts(args: {
 	databases: OrmEntityMetadata[];

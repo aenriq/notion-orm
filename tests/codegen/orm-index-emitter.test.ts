@@ -78,7 +78,7 @@ describe("orm index emitter", () => {
 	test("emits runtime index that executes and wires databases/agents", async () => {
 		const tempDirectory = createTempWorkspace("orm-index-");
 		const srcDirectory = join(tempDirectory, CODEGEN_EMIT_PATHS.srcDir);
-		const dbDirectory = join(tempDirectory, CODEGEN_EMIT_PATHS.dbDir);
+		const dbDirectory = join(tempDirectory, CODEGEN_EMIT_PATHS.databasesDir);
 		const agentsDirectory = join(tempDirectory, CODEGEN_EMIT_PATHS.agentsDir);
 		mkdirSync(srcDirectory, { recursive: true });
 		mkdirSync(dbDirectory, { recursive: true });

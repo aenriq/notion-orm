@@ -378,9 +378,9 @@ See [API Reference](#api-reference) for full method signatures, `ThreadInfo` sha
 
 | import path                                    | what you get                                                                                                                                                                 | when to use                                                  |
 | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `@haustle/notion-orm/notion/db/<databaseName>`  | `<databaseName>(auth)` factory, `DatabaseSchemaType`, `QuerySchemaType`, generated Zod schema, generated option tuples (for select/status/multi-select), schema/type aliases | Script-level direct DB usage without the `NotionORM` wrapper |
+| `@haustle/notion-orm/notion/databases/<databaseName>`  | `<databaseName>(auth)` factory, `DatabaseSchemaType`, `QuerySchemaType`, generated Zod schema, generated option tuples (for select/status/multi-select), schema/type aliases | Script-level direct DB usage without the `NotionORM` wrapper |
 | `@haustle/notion-orm/notion/agents/<agentName>` | `<agentName>(auth)` factory that returns an `AgentClient`                                                                                                                    | Script-level direct agent usage                              |
-| `@haustle/notion-orm/notion/db`                 | `databases` barrel object (all database factories)                                                                                                                           | Dynamic database selection or custom registry wiring         |
+| `@haustle/notion-orm/notion/databases`                 | `databases` barrel object (all database factories)                                                                                                                           | Dynamic database selection or custom registry wiring         |
 | `@haustle/notion-orm/notion/agents`             | `agents` barrel object (all agent factories)                                                                                                                                 | Dynamic agent selection or custom registry wiring            |
 
 ## Thread response shapes
@@ -452,7 +452,7 @@ All supported properties can be used in typed filters. Formula properties are no
 ├── plugins              # lint/tooling helpers
 └── notion               # generated output (after notion sync)
     ├── src
-    ├── db
+    ├── databases
     └── agents
 ```
 

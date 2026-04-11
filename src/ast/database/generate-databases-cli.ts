@@ -118,7 +118,7 @@ export const createDatabaseTypes = async (
 	return { databaseNames, databaseKeys };
 };
 
-/** Emits `db/index.ts|js` so generated databases can be addressed as a registry. */
+/** Emits `databases/index.ts|js` so generated databases can be addressed as a registry. */
 function createDatabaseBarrelFile(args: {
 	databaseInfo: Array<{ name: string }>;
 }) {

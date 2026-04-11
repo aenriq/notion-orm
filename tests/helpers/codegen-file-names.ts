@@ -3,12 +3,12 @@ export const CODEGEN_GOLDEN_FILES = {
 	configTemplate: "notion-config-template.ts",
 	ormIndexDeclaration: "orm-index.d.ts",
 
-	dbCustomerOrdersTs: "db/customerOrders.ts",
-	dbCustomerOrdersJs: "db/customerOrders.js",
-	dbInventoryItemsTs: "db/inventoryItems.ts",
-	dbInventoryItemsJs: "db/inventoryItems.js",
-	dbEdgeCasesTs: "db/edgeCases.ts",
-	dbEdgeCasesJs: "db/edgeCases.js",
+	dbCustomerOrdersTs: "databases/customerOrders.ts",
+	dbCustomerOrdersJs: "databases/customerOrders.js",
+	dbInventoryItemsTs: "databases/inventoryItems.ts",
+	dbInventoryItemsJs: "databases/inventoryItems.js",
+	dbEdgeCasesTs: "databases/edgeCases.ts",
+	dbEdgeCasesJs: "databases/edgeCases.js",
 } as const;
 
 export const CODEGEN_EMIT_PATHS = {
@@ -18,7 +18,7 @@ export const CODEGEN_EMIT_PATHS = {
 	notionConfigTs: "notion.config.ts",
 	notionConfigMjs: "notion.config.mjs",
 	srcDir: "src",
-	dbDir: "db",
+	databasesDir: "databases",
 	agentsDir: "agents",
 	baseModuleJs: "base.js",
 	taskDbModuleJs: "taskDb.js",
