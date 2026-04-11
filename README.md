@@ -15,7 +15,7 @@ A lightweight TypeScript [Notion API](https://developers.notion.com/) wrapper th
 bun add @haustle/notion-orm
 ```
 
-After upgrading the package, run **`bun notion sync`** so generated `build/src/index.*` stays in sync with the version you installed (stale codegen can break at runtime when imports from the ORM package change).
+After upgrading the package, run **`bun notion sync`** so generated `notion/src/index.*` stays in sync with the version you installed (stale codegen can break at runtime when imports from the ORM package change).
 
 # Quick start
 
@@ -378,10 +378,10 @@ See [API Reference](#api-reference) for full method signatures, `ThreadInfo` sha
 
 | import path                                    | what you get                                                                                                                                                                 | when to use                                                  |
 | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `@haustle/notion-orm/build/db/<databaseName>`  | `<databaseName>(auth)` factory, `DatabaseSchemaType`, `QuerySchemaType`, generated Zod schema, generated option tuples (for select/status/multi-select), schema/type aliases | Script-level direct DB usage without the `NotionORM` wrapper |
-| `@haustle/notion-orm/build/agents/<agentName>` | `<agentName>(auth)` factory that returns an `AgentClient`                                                                                                                    | Script-level direct agent usage                              |
-| `@haustle/notion-orm/build/db`                 | `databases` barrel object (all database factories)                                                                                                                           | Dynamic database selection or custom registry wiring         |
-| `@haustle/notion-orm/build/agents`             | `agents` barrel object (all agent factories)                                                                                                                                 | Dynamic agent selection or custom registry wiring            |
+| `@haustle/notion-orm/notion/db/<databaseName>`  | `<databaseName>(auth)` factory, `DatabaseSchemaType`, `QuerySchemaType`, generated Zod schema, generated option tuples (for select/status/multi-select), schema/type aliases | Script-level direct DB usage without the `NotionORM` wrapper |
+| `@haustle/notion-orm/notion/agents/<agentName>` | `<agentName>(auth)` factory that returns an `AgentClient`                                                                                                                    | Script-level direct agent usage                              |
+| `@haustle/notion-orm/notion/db`                 | `databases` barrel object (all database factories)                                                                                                                           | Dynamic database selection or custom registry wiring         |
+| `@haustle/notion-orm/notion/agents`             | `agents` barrel object (all agent factories)                                                                                                                                 | Dynamic agent selection or custom registry wiring            |
 
 ## Thread response shapes
 
@@ -450,7 +450,7 @@ All supported properties can be used in typed filters. Formula properties are no
 │   │   └── shared
 │   └── types            # local type bridges
 ├── plugins              # lint/tooling helpers
-└── build                # generated output (after build/sync)
+└── notion               # generated output (after notion sync)
     ├── src
     ├── db
     └── agents

@@ -6,20 +6,27 @@
 import path from "path";
 
 /**
+ * Top-level directory name for CLI-generated artifacts in consuming projects
+ * (`notion/src`, `notion/db`, `notion/agents`). Distinct from this package's
+ * npm `outDir` (`build/`), which remains `@haustle/notion-orm/build/...`.
+ */
+export const PROJECT_CODEGEN_DIR_NAME = "notion" as const;
+
+/**
  * Resolve generated artifact paths from the current project root, not from the
  * installed package location. This keeps `bun notion sync` writing into the
  * consuming app when the package is linked locally.
  */
 function getProjectBuildDir(): string {
-	return path.resolve(process.cwd(), "build");
+	return path.resolve(process.cwd(), PROJECT_CODEGEN_DIR_NAME);
 }
 
-/** Canonical output directory for generated database modules (`build/db/*`). */
+/** Canonical output directory for generated database modules (`notion/db/*`). */
 function getDatabasesDir(): string {
 	return path.join(getProjectBuildDir(), "db");
 }
 
-/** Canonical output directory for generated agent modules (`build/agents/*`). */
+/** Canonical output directory for generated agent modules (`notion/agents/*`). */
 function getAgentsDir(): string {
 	return path.join(getProjectBuildDir(), "agents");
 }
@@ -131,13 +138,13 @@ export const AST_TYPE_NAMES = {
  * when the build layout changes.
  */
 export const PLAYGROUND_PATHS = {
-	BUILD_INDEX: "build/src/index.ts",
+	BUILD_INDEX: `${PROJECT_CODEGEN_DIR_NAME}/src/index.ts`,
 
 	databaseModule(name: string): string {
-		return `build/db/${name}.ts`;
+		return `${PROJECT_CODEGEN_DIR_NAME}/db/${name}.ts`;
 	},
 	agentModule(name: string): string {
-		return `build/agents/${name}.ts`;
+		return `${PROJECT_CODEGEN_DIR_NAME}/agents/${name}.ts`;
 	},
 
 	databaseImport(name: string): string {

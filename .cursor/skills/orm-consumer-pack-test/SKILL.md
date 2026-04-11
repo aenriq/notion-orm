@@ -87,7 +87,7 @@ Re-running `bun add` after a new pack replaces the installed package with the ne
 
 ### 4) Regenerate generated types (when applicable)
 
-If the consumer relies on CLI-generated `build/` or `notion.config` outputs, run from each app:
+If the consumer relies on CLI-generated `notion/` or `notion.config` outputs, run from each app:
 
 ```bash
 bun notion sync

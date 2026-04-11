@@ -401,7 +401,7 @@ function createDeclarationClass(args: {
 }
 
 /**
- * Produces runtime module statements for `build/src/index.ts`.
+ * Produces runtime module statements for `notion/src/index.ts`.
  */
 export function buildOrmIndexModuleAst(args: {
 	databases: OrmEntityMetadata[];
@@ -445,7 +445,7 @@ export function buildOrmIndexModuleAst(args: {
 }
 
 /**
- * Produces declaration module statements for `build/src/index.d.ts`.
+ * Produces declaration module statements for `notion/src/index.d.ts`.
  */
 export function buildOrmIndexDeclarationAst(args: {
 	databases: OrmEntityMetadata[];
@@ -533,7 +533,7 @@ export function emitOrmIndexArtifacts(args: {
 }
 
 /**
- * Rebuilds the generated root `build/src/index` artifacts that wire all
+ * Rebuilds the generated root `notion/src/index` artifacts that wire all
  * database/agent factories into the exported NotionORM class.
  * Use this from both database and agent CLI entry points.
  */
