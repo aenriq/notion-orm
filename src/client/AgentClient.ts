@@ -7,6 +7,12 @@ import type {
 } from "@notionhq/agents-client";
 import { loadAgentsSdk, stripLangTags } from "../agents-sdk-resolver";
 
+export type ThreadInfo = {
+	threadId: NotionThreadInfo["thread_id"];
+	agentId: NotionThreadInfo["agent_id"];
+	messages: NotionThreadInfo["messages"];
+};
+
 export type AgentIcon =
 	| { type: "emoji"; emoji: string }
 	| { type: "file"; file: { url: string; expiry_time: string } }
@@ -20,12 +26,6 @@ export type AgentIcon =
 			custom_agent_avatar: { static_url: string; animated_url: string };
 	  }
 	| null;
-
-export type ThreadInfo = {
-	threadId: NotionThreadInfo["thread_id"];
-	agentId: NotionThreadInfo["agent_id"];
-	messages: NotionThreadInfo["messages"];
-};
 
 type LazyClient = {
 	sdk: typeof import("@notionhq/agents-client");
