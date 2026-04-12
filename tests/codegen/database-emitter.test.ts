@@ -193,8 +193,8 @@ describe("database module emitter", () => {
 			const jsPath = join(tempDir, CODEGEN_EMIT_PATHS.customerOrdersModuleJs);
 			const mod = await import(pathToFileURL(jsPath).href);
 
-			expect(mod.CustomerOrdersSchema).toBeDefined();
-			expect(typeof mod.customerOrders).toBe("function");
+			expect(mod.schema).toBeDefined();
+			expect(typeof mod.CustomerOrders).toBe("function");
 		});
 	});
 });

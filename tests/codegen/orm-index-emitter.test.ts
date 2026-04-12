@@ -41,7 +41,7 @@ type RuntimeNotionOrmInstance = {
 };
 
 type RuntimeNotionOrmConstructor = new (config: {
-	auth: string;
+	auth?: string;
 }) => RuntimeNotionOrmInstance;
 
 function isRuntimeNotionOrmConstructor(
@@ -87,7 +87,7 @@ describe("orm index emitter", () => {
 			"export class DatabaseClient {}",
 			"export class NotionORMBase {",
 			"  constructor(config) {",
-			"    this.auth = config.auth;",
+			"    this.notionAuth = config.auth ?? \"\";",
 			"  }",
 			"}",
 			"",
@@ -100,7 +100,7 @@ describe("orm index emitter", () => {
 		writeFileSync(join(packageBaseDir, "base.js"), baseStub);
 		writeFileSync(
 			join(dbDirectory, CODEGEN_EMIT_PATHS.taskDbModuleJs),
-			'export const taskDb = (auth) => ({ kind: "db", auth });\n',
+			'export const TaskDb = (auth) => ({ kind: "db", auth });\n',
 		);
 		writeFileSync(
 			join(agentsDirectory, CODEGEN_EMIT_PATHS.mealAgentModuleJs),

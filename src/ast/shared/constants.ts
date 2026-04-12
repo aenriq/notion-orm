@@ -4,6 +4,7 @@
  * emitters do not need to duplicate structure-sensitive values.
  */
 import path from "path";
+import { toPascalCase } from "../../helpers";
 
 /**
  * Top-level directory name for CLI-generated artifacts in consuming projects
@@ -104,11 +105,11 @@ export const AST_IMPORT_PATHS = {
 	ZOD: "zod",
 
 	databaseClass(name: string): string {
-		return `./${PROJECT_DATABASES_DIR_NAME}/${name}`;
+		return `./${PROJECT_DATABASES_DIR_NAME}/${toPascalCase(name)}`;
 	},
 
 	agentClass(name: string): string {
-		return `./agents/${name}`;
+		return `./agents/${toPascalCase(name)}`;
 	},
 } as const;
 
@@ -153,17 +154,17 @@ export const PLAYGROUND_PATHS = {
 	BUILD_INDEX_DIR: `${PROJECT_CODEGEN_DIR_NAME}/`,
 
 	databaseModule(name: string): string {
-		return `${PROJECT_CODEGEN_DIR_NAME}/${PROJECT_DATABASES_DIR_NAME}/${name}.ts`;
+		return `${PROJECT_CODEGEN_DIR_NAME}/${PROJECT_DATABASES_DIR_NAME}/${toPascalCase(name)}.ts`;
 	},
 	agentModule(name: string): string {
-		return `${PROJECT_CODEGEN_DIR_NAME}/agents/${name}.ts`;
+		return `${PROJECT_CODEGEN_DIR_NAME}/agents/${toPascalCase(name)}.ts`;
 	},
 
 	databaseImport(name: string): string {
-		return `./${PROJECT_DATABASES_DIR_NAME}/${name}.ts`;
+		return `./${PROJECT_DATABASES_DIR_NAME}/${toPascalCase(name)}.ts`;
 	},
 	agentImport(name: string): string {
-		return `./agents/${name}.ts`;
+		return `./agents/${toPascalCase(name)}.ts`;
 	},
 
 	MOCK_PACKAGE_INDEX: "playground_modules/haustle-notion-orm/index.ts",

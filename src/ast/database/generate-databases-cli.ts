@@ -7,6 +7,7 @@ import { Client } from "@notionhq/client";
 import fs from "fs";
 import { getNotionConfig } from "../../config/loadConfig";
 import { toUndashedNotionId } from "../../helpers";
+import { toPascalCase } from "../shared/ast-builders";
 import {
 	type CachedEntityMetadata,
 	readAgentMetadataFromDisk,
@@ -129,8 +130,9 @@ function createDatabaseBarrelFile(args: {
 	emitRegistryModuleArtifacts({
 		registryName: "databases",
 		entries: databaseInfo.map(({ name }) => ({
-			importName: name,
-			importPath: `./${name}`,
+			importName: toPascalCase(name),
+			importPath: `./${toPascalCase(name)}`,
+			registryKey: name,
 		})),
 		tsPath: AST_FS_PATHS.databaseBarrelTs,
 		jsPath: AST_FS_PATHS.databaseBarrelJs,

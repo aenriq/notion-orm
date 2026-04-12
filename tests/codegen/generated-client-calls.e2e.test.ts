@@ -101,7 +101,7 @@ describe("generated database client e2e calls", () => {
 				join(workspacePath, CODEGEN_EMIT_PATHS.customerOrdersModuleJs),
 			).href
 		);
-		const dbClient = mod.customerOrders("token-123");
+		const dbClient = mod.CustomerOrders("token-123");
 
 		await dbClient.create({
 			properties: {

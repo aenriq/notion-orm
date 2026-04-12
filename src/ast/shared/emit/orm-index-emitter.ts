@@ -1,6 +1,7 @@
 import fs from "fs";
 import * as ts from "typescript";
 import type { CachedEntityMetadata } from "../cached-metadata";
+import { toPascalCase } from "../ast-builders";
 import {
 	AST_FS_PATHS,
 	AST_IMPORT_PATHS,
@@ -8,9 +9,11 @@ import {
 } from "../constants";
 import {
 	createEmitContext,
-	emitTsAndJsArtifacts,
-	printTsNodes,
+	finalizeGeneratedSourceWithTrailingNewline,
+	insertBlankLineAfterDoubleSlashBanner,
+	printTsNodeSegments,
 	type TsEmitContext,
+	transpileTsToJs,
 	writeTextArtifact,
 } from "./ts-emit-core";
 import { TS_EMIT_INTEROP, TS_EMIT_OPTIONS_DEFAULT } from "./ts-emit-options";
@@ -20,9 +23,9 @@ import { TS_EMIT_INTEROP, TS_EMIT_OPTIONS_DEFAULT } from "./ts-emit-options";
  *
  * `name` must be an identifier-safe lower camelCase symbol
  * (for example: `coffeeShopDirectory`, `foodManager`).
- * It is used as both:
- * - the imported factory symbol name
- * - the generated module filename in import paths (`./databases/<name>`, `./agents/<name>`)
+ * It is used as:
+ * - the registry property key; import paths use PascalCase file stems (`./databases/<PascalName>`, `./agents/<PascalName>`)
+ * - database factory exports are PascalCase (`CustomerOrders`); agent factory exports stay camelCase (`foodManager`)
  */
 export interface OrmEntityMetadata {
 	name: string;
@@ -121,14 +124,21 @@ function createBaseValueExportDeclaration(args: {
 
 /**
  * Creates imports for generated entity factory functions.
- * Example: `import { coffeeShopDirectory } from "./databases/coffeeShopDirectory";`
+ * Example: `import { CoffeeShopDirectory } from "./databases/coffeeShopDirectory";`
  */
 function createEntityImportStatements(args: {
 	entities: OrmEntityMetadata[];
 	pathFactory: (name: string) => string;
 	typeOnly?: boolean;
+	/** Exported factory identifier; defaults to `entity.name`. */
+	factoryExportId?: (moduleBasename: string) => string;
 }): ts.ImportDeclaration[] {
-	const { entities, pathFactory, typeOnly = false } = args;
+	const {
+		entities,
+		pathFactory,
+		typeOnly = false,
+		factoryExportId = (n: string) => n,
+	} = args;
 	return entities.map((entity) =>
 		ts.factory.createImportDeclaration(
 			undefined,
@@ -139,7 +149,7 @@ function createEntityImportStatements(args: {
 					ts.factory.createImportSpecifier(
 						false,
 						undefined,
-						ts.factory.createIdentifier(entity.name),
+						ts.factory.createIdentifier(factoryExportId(entity.name)),
 					),
 				]),
 			),
@@ -151,9 +161,12 @@ function createEntityImportStatements(args: {
 
 /**
  * Builds the shape for `databases`/`agents` properties on NotionORM:
- * `{ foo: ReturnType<typeof foo>; ... }`.
+ * `{ foo: ReturnType<typeof Foo>; ... }` (factory symbol may differ from the key).
  */
-function createRegistryTypeLiteral(entities: OrmEntityMetadata[]): ts.TypeNode {
+function createRegistryTypeLiteral(
+	entities: OrmEntityMetadata[],
+	factoryExportId: (moduleBasename: string) => string = (n) => n,
+): ts.TypeNode {
 	const properties = entities.map((entity) =>
 		ts.factory.createPropertySignature(
 			undefined,
@@ -163,7 +176,7 @@ function createRegistryTypeLiteral(entities: OrmEntityMetadata[]): ts.TypeNode {
 				ts.factory.createIdentifier("ReturnType"),
 				[
 					ts.factory.createTypeQueryNode(
-						ts.factory.createIdentifier(entity.name),
+						ts.factory.createIdentifier(factoryExportId(entity.name)),
 						undefined,
 					),
 				],
@@ -175,22 +188,23 @@ function createRegistryTypeLiteral(entities: OrmEntityMetadata[]): ts.TypeNode {
 
 /**
  * Creates constructor initializer object for each entity registry.
- * Each generated factory receives `config.auth`.
+ * Each generated factory receives the resolved token from {@link NotionORMBase#notionAuth}.
  */
 function createRegistryInitializer(
 	entities: OrmEntityMetadata[],
+	factoryExportId: (moduleBasename: string) => string = (n) => n,
 ): ts.Expression {
 	return ts.factory.createObjectLiteralExpression(
 		entities.map((entity) =>
 			ts.factory.createPropertyAssignment(
 				ts.factory.createIdentifier(entity.name),
 				ts.factory.createCallExpression(
-					ts.factory.createIdentifier(entity.name),
+					ts.factory.createIdentifier(factoryExportId(entity.name)),
 					undefined,
 					[
 						ts.factory.createPropertyAccessExpression(
-							ts.factory.createIdentifier("config"),
-							ts.factory.createIdentifier("auth"),
+							ts.factory.createThis(),
+							ts.factory.createIdentifier("notionAuth"),
 						),
 					],
 				),
@@ -208,10 +222,44 @@ function createConfigParamType(): ts.TypeNode {
 		ts.factory.createPropertySignature(
 			undefined,
 			ts.factory.createIdentifier("auth"),
-			undefined,
+			ts.factory.createToken(ts.SyntaxKind.QuestionToken),
 			ts.factory.createKeywordTypeNode(ts.SyntaxKind.StringKeyword),
 		),
 	]);
+}
+
+function addSyntheticJsdocBlock(node: ts.Node, lines: readonly string[]): void {
+	const body = lines.map((line) => ` * ${line}`).join("\n");
+	ts.addSyntheticLeadingComment(
+		node,
+		ts.SyntaxKind.MultiLineCommentTrivia,
+		`*\n${body}\n `,
+		true,
+	);
+}
+
+function addOrmIndexGeneratedBanner(node: ts.Statement, syncCommand: string): void {
+	ts.addSyntheticLeadingComment(
+		node,
+		ts.SyntaxKind.SingleLineCommentTrivia,
+		" Generated by @haustle/notion-orm — do not edit manually.",
+		true,
+	);
+	ts.addSyntheticLeadingComment(
+		node,
+		ts.SyntaxKind.SingleLineCommentTrivia,
+		` Regenerate with \`${syncCommand}\` (or your package script).`,
+		true,
+	);
+}
+
+function addLeadingSectionSlashComment(node: ts.Statement, text: string): void {
+	ts.addSyntheticLeadingComment(
+		node,
+		ts.SyntaxKind.SingleLineCommentTrivia,
+		` ${text}`,
+		true,
+	);
 }
 
 /**
@@ -238,7 +286,7 @@ function createRuntimeClassDeclaration(args: {
 					ts.factory.createIdentifier("databases"),
 				),
 				ts.factory.createToken(ts.SyntaxKind.EqualsToken),
-				createRegistryInitializer(databases),
+				createRegistryInitializer(databases, toPascalCase),
 			),
 		),
 	];
@@ -277,25 +325,40 @@ function createRuntimeClassDeclaration(args: {
 		);
 	}
 
-	const classMembers: ts.ClassElement[] = [
-		ts.factory.createPropertyDeclaration(
-			[ts.factory.createModifier(ts.SyntaxKind.PublicKeyword)],
-			ts.factory.createIdentifier("databases"),
-			undefined,
-			createRegistryTypeLiteral(databases),
-			undefined,
-		),
-	];
+	const databasesProperty = ts.factory.createPropertyDeclaration(
+		[ts.factory.createModifier(ts.SyntaxKind.PublicKeyword)],
+		ts.factory.createIdentifier("databases"),
+		undefined,
+		createRegistryTypeLiteral(databases, toPascalCase),
+		undefined,
+	);
+	addSyntheticJsdocBlock(databasesProperty, [
+		"Typed database client factories.",
+		"Keys match the `databases` entries in your Notion config; each value is a factory bound to this client's `auth` token.",
+	]);
+
+	const classMembers: ts.ClassElement[] = [databasesProperty];
 
 	if (hasAgents) {
-		classMembers.push(
-			ts.factory.createPropertyDeclaration(
-				[ts.factory.createModifier(ts.SyntaxKind.PublicKeyword)],
-				ts.factory.createIdentifier("agents"),
-				undefined,
-				createRegistryTypeLiteral(agents),
-				undefined,
-			),
+		const agentsProperty = ts.factory.createPropertyDeclaration(
+			[ts.factory.createModifier(ts.SyntaxKind.PublicKeyword)],
+			ts.factory.createIdentifier("agents"),
+			undefined,
+			createRegistryTypeLiteral(agents),
+			undefined,
+		);
+		addSyntheticJsdocBlock(agentsProperty, [
+			"Typed agent client factories.",
+			"Keys match the `agents` entries in your Notion config; each value is a factory bound to this client's `auth` token.",
+		]);
+		classMembers.push(agentsProperty);
+	}
+
+	const assignDatabasesStatement = statements[1];
+	if (assignDatabasesStatement) {
+		addLeadingSectionSlashComment(
+			assignDatabasesStatement,
+			"Instantiate generated factories with the same API token passed to this client.",
 		);
 	}
 
@@ -316,7 +379,7 @@ function createRuntimeClassDeclaration(args: {
 		),
 	);
 
-	return ts.factory.createClassDeclaration(
+	const classDeclaration = ts.factory.createClassDeclaration(
 		[ts.factory.createModifier(ts.SyntaxKind.ExportKeyword)],
 		ts.factory.createIdentifier("NotionORM"),
 		undefined,
@@ -330,6 +393,12 @@ function createRuntimeClassDeclaration(args: {
 		],
 		classMembers,
 	);
+	addSyntheticJsdocBlock(classDeclaration, [
+		"Generated Notion ORM entrypoint for this project.",
+		"`databases` and `agents` expose typed factories produced from your synced Notion workspace.",
+		`Regenerate this file with \`${syncCommand}\` when your Notion schema or config changes.`,
+	]);
+	return classDeclaration;
 }
 
 /**
@@ -342,26 +411,33 @@ function createDeclarationClass(args: {
 	const { databases, agents } = args;
 	const hasAgents = agents.length > 0;
 
-	const classMembers: ts.ClassElement[] = [
-		ts.factory.createPropertyDeclaration(
-			[ts.factory.createModifier(ts.SyntaxKind.PublicKeyword)],
-			ts.factory.createIdentifier("databases"),
-			undefined,
-			createRegistryTypeLiteral(databases),
-			undefined,
-		),
-	];
+	const databasesProperty = ts.factory.createPropertyDeclaration(
+		[ts.factory.createModifier(ts.SyntaxKind.PublicKeyword)],
+		ts.factory.createIdentifier("databases"),
+		undefined,
+		createRegistryTypeLiteral(databases, toPascalCase),
+		undefined,
+	);
+	addSyntheticJsdocBlock(databasesProperty, [
+		"Typed database client factories.",
+		"Keys match the `databases` entries in your Notion config; each value is a factory bound to this client's `auth` token.",
+	]);
+
+	const classMembers: ts.ClassElement[] = [databasesProperty];
 
 	if (hasAgents) {
-		classMembers.push(
-			ts.factory.createPropertyDeclaration(
-				[ts.factory.createModifier(ts.SyntaxKind.PublicKeyword)],
-				ts.factory.createIdentifier("agents"),
-				undefined,
-				createRegistryTypeLiteral(agents),
-				undefined,
-			),
+		const agentsProperty = ts.factory.createPropertyDeclaration(
+			[ts.factory.createModifier(ts.SyntaxKind.PublicKeyword)],
+			ts.factory.createIdentifier("agents"),
+			undefined,
+			createRegistryTypeLiteral(agents),
+			undefined,
 		);
+		addSyntheticJsdocBlock(agentsProperty, [
+			"Typed agent client factories.",
+			"Keys match the `agents` entries in your Notion config; each value is a factory bound to this client's `auth` token.",
+		]);
+		classMembers.push(agentsProperty);
 	}
 
 	classMembers.push(
@@ -381,7 +457,7 @@ function createDeclarationClass(args: {
 		),
 	);
 
-	return ts.factory.createClassDeclaration(
+	const classDeclaration = ts.factory.createClassDeclaration(
 		[ts.factory.createModifier(ts.SyntaxKind.ExportKeyword)],
 		ts.factory.createIdentifier("NotionORM"),
 		undefined,
@@ -395,6 +471,83 @@ function createDeclarationClass(args: {
 		],
 		classMembers,
 	);
+	addSyntheticJsdocBlock(classDeclaration, [
+		"Generated Notion ORM entrypoint for this project.",
+		"`databases` and `agents` expose typed factories produced from your synced Notion workspace.",
+	]);
+	return classDeclaration;
+}
+
+/**
+ * Produces runtime module statement groups for `notion/index.ts`, separated for readable spacing.
+ */
+export function buildOrmIndexModuleStatementSegments(args: {
+	databases: OrmEntityMetadata[];
+	agents: OrmEntityMetadata[];
+	syncCommand: string;
+	importPaths?: {
+		databaseClass?: (name: string) => string;
+		agentClass?: (name: string) => string;
+	};
+}): readonly (readonly ts.Statement[])[] {
+	const { databases, agents, syncCommand, importPaths } = args;
+	const hasAgents = agents.length > 0;
+	const databaseImports = createEntityImportStatements({
+		entities: databases,
+		pathFactory: importPaths?.databaseClass ?? AST_IMPORT_PATHS.databaseClass,
+		factoryExportId: toPascalCase,
+	});
+	const agentImports = hasAgents
+		? createEntityImportStatements({
+				entities: agents,
+				pathFactory: importPaths?.agentClass ?? AST_IMPORT_PATHS.agentClass,
+			})
+		: [];
+	const baseImport = createBaseImportDeclaration({ includeAgentClient: hasAgents });
+	const typeExport = createBaseTypeExportDeclaration();
+	const valueExport = createBaseValueExportDeclaration({ includeAgentClient: hasAgents });
+	const classDeclaration = createRuntimeClassDeclaration({
+		databases,
+		agents,
+		syncCommand,
+	});
+
+	if (databaseImports.length > 0) {
+		addOrmIndexGeneratedBanner(databaseImports[0], syncCommand);
+		addLeadingSectionSlashComment(
+			databaseImports[0],
+			"Database client factories (generated under ./databases/).",
+		);
+	} else if (agentImports.length > 0) {
+		addOrmIndexGeneratedBanner(agentImports[0], syncCommand);
+		addLeadingSectionSlashComment(
+			agentImports[0],
+			"Agent client factories (generated under ./agents/).",
+		);
+	} else {
+		addOrmIndexGeneratedBanner(baseImport, syncCommand);
+	}
+
+	if (databaseImports.length > 0 && agentImports.length > 0) {
+		addLeadingSectionSlashComment(
+			agentImports[0],
+			"Agent client factories (generated under ./agents/).",
+		);
+	}
+
+	if (databaseImports.length > 0 || agentImports.length > 0) {
+		addLeadingSectionSlashComment(
+			baseImport,
+			"Package imports: NotionORMBase, config types, and client classes.",
+		);
+	}
+
+	return [
+		databaseImports,
+		agentImports,
+		[baseImport, typeExport, valueExport],
+		[classDeclaration],
+	];
 }
 
 /**
@@ -409,30 +562,74 @@ export function buildOrmIndexModuleAst(args: {
 		agentClass?: (name: string) => string;
 	};
 }): ts.Statement[] {
-	const { databases, agents, syncCommand, importPaths } = args;
+	return buildOrmIndexModuleStatementSegments(args).flat();
+}
+
+/**
+ * Produces declaration module statement groups for `notion/index.d.ts`, separated for readable spacing.
+ */
+export function buildOrmIndexDeclarationStatementSegments(args: {
+	databases: OrmEntityMetadata[];
+	agents: OrmEntityMetadata[];
+	/** Defaults to the CLI generate command from constants when omitted. */
+	syncCommand?: string;
+}): readonly (readonly ts.Statement[])[] {
+	const { databases, agents, syncCommand: syncCommandArg } = args;
+	const syncCommand = syncCommandArg ?? AST_RUNTIME_CONSTANTS.CLI_GENERATE_COMMAND;
 	const hasAgents = agents.length > 0;
 	const databaseImports = createEntityImportStatements({
 		entities: databases,
-		pathFactory: importPaths?.databaseClass ?? AST_IMPORT_PATHS.databaseClass,
+		pathFactory: AST_IMPORT_PATHS.databaseClass,
+		typeOnly: true,
+		factoryExportId: toPascalCase,
 	});
 	const agentImports = hasAgents
 		? createEntityImportStatements({
 				entities: agents,
-				pathFactory: importPaths?.agentClass ?? AST_IMPORT_PATHS.agentClass,
+				pathFactory: AST_IMPORT_PATHS.agentClass,
+				typeOnly: true,
 			})
 		: [];
-	const classDeclaration = createRuntimeClassDeclaration({
-		databases,
-		agents,
-		syncCommand,
-	});
+	const baseImport = createBaseImportDeclaration({ includeAgentClient: hasAgents });
+	const typeExport = createBaseTypeExportDeclaration();
+	const valueExport = createBaseValueExportDeclaration({ includeAgentClient: hasAgents });
+	const classDeclaration = createDeclarationClass({ databases, agents });
+
+	if (databaseImports.length > 0) {
+		addOrmIndexGeneratedBanner(databaseImports[0], syncCommand);
+		addLeadingSectionSlashComment(
+			databaseImports[0],
+			"Database client factories (generated under ./databases/).",
+		);
+	} else if (agentImports.length > 0) {
+		addOrmIndexGeneratedBanner(agentImports[0], syncCommand);
+		addLeadingSectionSlashComment(
+			agentImports[0],
+			"Agent client factories (generated under ./agents/).",
+		);
+	} else {
+		addOrmIndexGeneratedBanner(baseImport, syncCommand);
+	}
+
+	if (databaseImports.length > 0 && agentImports.length > 0) {
+		addLeadingSectionSlashComment(
+			agentImports[0],
+			"Agent client factories (generated under ./agents/).",
+		);
+	}
+
+	if (databaseImports.length > 0 || agentImports.length > 0) {
+		addLeadingSectionSlashComment(
+			baseImport,
+			"Package imports: NotionORMBase, config types, and client classes.",
+		);
+	}
+
 	return [
-		...databaseImports,
-		...agentImports,
-		createBaseImportDeclaration({ includeAgentClient: hasAgents }),
-		createBaseTypeExportDeclaration(),
-		createBaseValueExportDeclaration({ includeAgentClient: hasAgents }),
-		classDeclaration,
+		databaseImports,
+		agentImports,
+		[baseImport, typeExport, valueExport],
+		[classDeclaration],
 	];
 }
 
@@ -442,29 +639,9 @@ export function buildOrmIndexModuleAst(args: {
 export function buildOrmIndexDeclarationAst(args: {
 	databases: OrmEntityMetadata[];
 	agents: OrmEntityMetadata[];
+	syncCommand?: string;
 }): ts.Statement[] {
-	const { databases, agents } = args;
-	const hasAgents = agents.length > 0;
-	const databaseImports = createEntityImportStatements({
-		entities: databases,
-		pathFactory: AST_IMPORT_PATHS.databaseClass,
-		typeOnly: true,
-	});
-	const agentImports = hasAgents
-		? createEntityImportStatements({
-				entities: agents,
-				pathFactory: AST_IMPORT_PATHS.agentClass,
-				typeOnly: true,
-			})
-		: [];
-	return [
-		...databaseImports,
-		...agentImports,
-		createBaseImportDeclaration({ includeAgentClient: hasAgents }),
-		createBaseTypeExportDeclaration(),
-		createBaseValueExportDeclaration({ includeAgentClient: hasAgents }),
-		createDeclarationClass({ databases, agents }),
-	];
+	return buildOrmIndexDeclarationStatementSegments(args).flat();
 }
 
 /**
@@ -491,30 +668,36 @@ export function emitOrmIndexArtifacts(args: {
 		syncCommand,
 		context = createEmitContext({ fileName: "index.ts" }),
 	} = args;
-	const runtimeNodes = buildOrmIndexModuleAst({
+	const runtimeSegments = buildOrmIndexModuleStatementSegments({
 		databases,
 		agents,
 		syncCommand,
 	});
-	const declarationNodes = buildOrmIndexDeclarationAst({
-		databases,
-		agents,
-	});
-
-	const { tsCode, jsCode } = emitTsAndJsArtifacts({
-		nodes: runtimeNodes,
-		tsPath: buildIndexTsPath,
-		jsPath: buildIndexJsPath,
-		context,
+	let tsCode = printTsNodeSegments({ segments: runtimeSegments, context });
+	tsCode = insertBlankLineAfterDoubleSlashBanner(tsCode);
+	tsCode = finalizeGeneratedSourceWithTrailingNewline(tsCode);
+	const jsCode = transpileTsToJs({
+		typescriptCode: tsCode,
 		module: TS_EMIT_OPTIONS_DEFAULT.module,
 		target: TS_EMIT_OPTIONS_DEFAULT.target,
 		esModuleInterop: TS_EMIT_INTEROP.esModuleInterop,
 		allowSyntheticDefaultImports: TS_EMIT_INTEROP.allowSyntheticDefaultImports,
 	});
-	const dtsCode = printTsNodes({
-		nodes: declarationNodes,
-		context: createEmitContext({ fileName: "index.d.ts" }),
+	writeTextArtifact({ filePath: buildIndexTsPath, content: tsCode });
+	writeTextArtifact({ filePath: buildIndexJsPath, content: jsCode });
+
+	const declarationSegments = buildOrmIndexDeclarationStatementSegments({
+		databases,
+		agents,
+		syncCommand,
 	});
+	const dtsContext = createEmitContext({ fileName: "index.d.ts" });
+	let dtsCode = printTsNodeSegments({
+		segments: declarationSegments,
+		context: dtsContext,
+	});
+	dtsCode = insertBlankLineAfterDoubleSlashBanner(dtsCode);
+	dtsCode = finalizeGeneratedSourceWithTrailingNewline(dtsCode);
 	writeTextArtifact({ filePath: buildIndexDtsPath, content: dtsCode });
 
 	if (buildIndexDtsMapPath && fs.existsSync(buildIndexDtsMapPath)) {

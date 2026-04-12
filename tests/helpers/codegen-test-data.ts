@@ -13,8 +13,16 @@ import type { RegistryEntry } from "../../src/ast/shared/emit/registry-emitter";
 export const REGISTRY_SCENARIO = {
 	registryName: "items",
 	entries: [
-		{ importName: "inventoryItems", importPath: "./inventoryItems" },
-		{ importName: "customerOrders", importPath: "./customerOrders" },
+		{
+			importName: "InventoryItems",
+			importPath: "./InventoryItems",
+			registryKey: "inventoryItems",
+		},
+		{
+			importName: "CustomerOrders",
+			importPath: "./CustomerOrders",
+			registryKey: "customerOrders",
+		},
 	],
 } as const satisfies {
 	registryName: string;

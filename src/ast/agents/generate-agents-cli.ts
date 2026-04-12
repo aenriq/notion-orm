@@ -11,7 +11,7 @@ import { syncAgentsInConfigWithAST } from "../../cli/helpers";
 import type { AgentIcon } from "../../client/AgentClient";
 import { findConfigFile } from "../../config/helpers";
 import { getNotionConfig } from "../../config/loadConfig";
-import { camelize, toUndashedNotionId } from "../../helpers";
+import { camelize, toPascalCase, toUndashedNotionId } from "../../helpers";
 import {
 	type CachedEntityMetadata,
 	readDatabaseMetadata,
@@ -124,7 +124,8 @@ function createAgentBarrelFile(args: { agentInfo: Array<{ name: string }> }) {
 		registryName: "agents",
 		entries: agentInfo.map(({ name }) => ({
 			importName: name,
-			importPath: `./${name}`,
+			importPath: `./${toPascalCase(name)}`,
+			registryKey: name,
 		})),
 		tsPath: path.resolve(AGENTS_DIR, "index.ts"),
 		jsPath: path.resolve(AGENTS_DIR, "index.js"),

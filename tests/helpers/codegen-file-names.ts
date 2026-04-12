@@ -3,12 +3,12 @@ export const CODEGEN_GOLDEN_FILES = {
 	configTemplate: "notion-config-template.ts",
 	ormIndexDeclaration: "orm-index.d.ts",
 
-	dbCustomerOrdersTs: "databases/customerOrders.ts",
-	dbCustomerOrdersJs: "databases/customerOrders.js",
-	dbInventoryItemsTs: "databases/inventoryItems.ts",
-	dbInventoryItemsJs: "databases/inventoryItems.js",
-	dbEdgeCasesTs: "databases/edgeCases.ts",
-	dbEdgeCasesJs: "databases/edgeCases.js",
+	dbCustomerOrdersTs: "databases/CustomerOrders.ts",
+	dbCustomerOrdersJs: "databases/CustomerOrders.js",
+	dbInventoryItemsTs: "databases/InventoryItems.ts",
+	dbInventoryItemsJs: "databases/InventoryItems.js",
+	dbEdgeCasesTs: "databases/EdgeCases.ts",
+	dbEdgeCasesJs: "databases/EdgeCases.js",
 } as const;
 
 export const CODEGEN_EMIT_PATHS = {
@@ -20,14 +20,14 @@ export const CODEGEN_EMIT_PATHS = {
 	databasesDir: "databases",
 	agentsDir: "agents",
 	baseModuleJs: "base.js",
-	taskDbModuleJs: "taskDb.js",
-	mealAgentModuleJs: "mealAgent.js",
-	customerOrdersModuleTs: "customerOrders.ts",
-	inventoryItemsModuleTs: "inventoryItems.ts",
-	edgeCasesModuleTs: "edgeCases.ts",
-	inventoryItemsModuleJs: "inventoryItems.js",
-	customerOrdersModuleJs: "customerOrders.js",
-	edgeCasesModuleJs: "edgeCases.js",
+	taskDbModuleJs: "TaskDb.js",
+	mealAgentModuleJs: "MealAgent.js",
+	customerOrdersModuleTs: "CustomerOrders.ts",
+	inventoryItemsModuleTs: "InventoryItems.ts",
+	edgeCasesModuleTs: "EdgeCases.ts",
+	inventoryItemsModuleJs: "InventoryItems.js",
+	customerOrdersModuleJs: "CustomerOrders.js",
+	edgeCasesModuleJs: "EdgeCases.js",
 } as const;
 
 export const CODEGEN_TEST_PATHS = {

@@ -21,6 +21,17 @@ export function camelize(str: string) {
 		.join("")}`;
 }
 
+/**
+ * Capitalizes the first character of an identifier (e.g. camelCase module key → file stem).
+ * Used for generated module filenames alongside PascalCase factory exports.
+ */
+export function toPascalCase(value: string): string {
+	if (!value) {
+		return value;
+	}
+	return value[0].toUpperCase() + value.slice(1);
+}
+
 /** Accepts dashed or undashed Notion ids and returns the canonical undashed form. */
 export function toUndashedNotionId(id: string): string {
 	const normalizedId = id.replace(/-/g, "").toLowerCase();

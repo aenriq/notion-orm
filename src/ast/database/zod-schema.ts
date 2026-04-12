@@ -17,7 +17,7 @@ export interface ZodMetadata {
 	}
 
 /**
- * Creates the exported `const <SchemaName> = z.object({...})` statement
+ * Creates the exported `const schema = z.object({...})` statement
  * from per-column metadata collected during database AST generation.
  */
 export function createZodSchema(args: {

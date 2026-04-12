@@ -55,7 +55,6 @@ export function buildDemoDatabaseEntry(args: {
 		);
 	}
 	const { moduleName } = targetModule;
-	const schemaTypeName = `${moduleName}Schema`;
 
 	const enumProperties = findSelectLikeProperties(
 		spec,
@@ -65,7 +64,7 @@ export function buildDemoDatabaseEntry(args: {
 
 	const namedImports = [
 		...enumImports.map((name) => `\t${name},`),
-		`\ttype ${schemaTypeName},`,
+		`\ttype DatabaseSchemaType,`,
 	].join("\n");
 
 	const schemaEntries = Object.entries(scenario.create.schemaLiteral)
@@ -107,7 +106,7 @@ ${namedImports}
 const notion = new NotionORM({ auth: "${PLAYGROUND_PATHS.DEMO_AUTH_PLACEHOLDER}" });
 
 // create — row + icon
-const track: ${schemaTypeName} = {
+const track: DatabaseSchemaType = {
 ${schemaEntries}
 };
 const created = await notion.databases.${moduleName}.create({
