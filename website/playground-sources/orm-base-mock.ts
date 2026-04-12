@@ -18,5 +18,9 @@ export type {
 export { AgentClient, DatabaseClient } from "../../index.ts";
 
 export class NotionORMBase {
-	constructor(_config: { auth: string }) {}
+	protected readonly notionAuth: string;
+
+	constructor(_config: { auth?: string }) {
+		this.notionAuth = "";
+	}
 }

@@ -12,16 +12,10 @@ import {
 } from "../../helpers/temp-workspace";
 
 const ORIGINAL_CWD = process.cwd();
-const ORIGINAL_NOTION_AUTH = process.env.NOTION_AUTH;
 const ORIGINAL_NOTION_KEY = process.env.NOTION_KEY;
 
 afterEach(() => {
 	process.chdir(ORIGINAL_CWD);
-	if (ORIGINAL_NOTION_AUTH === undefined) {
-		delete process.env.NOTION_AUTH;
-	} else {
-		process.env.NOTION_AUTH = ORIGINAL_NOTION_AUTH;
-	}
 	if (ORIGINAL_NOTION_KEY === undefined) {
 		delete process.env.NOTION_KEY;
 	} else {
@@ -74,11 +68,10 @@ describe("config loading contracts", () => {
 		await expect(loadConfig(configPath)).rejects.toThrow("auth");
 	});
 
-	test("getNotionConfig falls back to NOTION_AUTH when no config file exists", async () => {
+	test("getNotionConfig falls back to NOTION_KEY when no config file exists", async () => {
 		const workspacePath = createTempWorkspace("config-env-fallback-");
 		process.chdir(workspacePath);
-		process.env.NOTION_AUTH = "env-auth-token";
-		delete process.env.NOTION_KEY;
+		process.env.NOTION_KEY = "env-auth-token";
 
 		const config = await getNotionConfig();
 		expect(config).toEqual({
@@ -92,11 +85,10 @@ describe("config loading contracts", () => {
 		const workspacePath = createTempWorkspace("config-cache-");
 		process.chdir(workspacePath);
 
-		process.env.NOTION_AUTH = "cached-token";
-		delete process.env.NOTION_KEY;
+		process.env.NOTION_KEY = "cached-token";
 		const first = await getNotionConfig();
 
-		process.env.NOTION_AUTH = "new-token";
+		process.env.NOTION_KEY = "new-token";
 		const second = await getNotionConfig();
 
 		expect(first.auth).toBe("cached-token");
@@ -121,7 +113,7 @@ describe("config loading contracts", () => {
 			].join("\n"),
 		});
 		process.chdir(workspacePath);
-		process.env.NOTION_AUTH = "env-fallback-should-not-win";
+		process.env.NOTION_KEY = "env-fallback-should-not-win";
 
 		const config = await getNotionConfig();
 		expect(config.auth).toBe("config-auth-token");

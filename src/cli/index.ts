@@ -248,7 +248,7 @@ async function runSync(): Promise<void> {
 			);
 		} else {
 			console.log(
-				"📝 No notion config file detected. Using NOTION_AUTH/NOTION_KEY from environment.",
+				"📝 No notion config file detected. Using NOTION_KEY from environment.",
 			);
 		}
 	} catch (error: unknown) {
