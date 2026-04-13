@@ -129,9 +129,10 @@ export const AST_RUNTIME_CONSTANTS = {
 
 /** Canonical generated type names referenced across emitters. */
 export const AST_TYPE_NAMES = {
-	DATABASE_SCHEMA_TYPE: "DatabaseSchemaType",
+	PAGE_SCHEMA: "PageSchema",
+	CREATE_SCHEMA: "CreateSchema",
 	COLUMN_NAME_TO_COLUMN_TYPE: "ColumnNameToColumnType",
-	QUERY_SCHEMA_TYPE: "QuerySchemaType",
+	QUERY_SCHEMA: "QuerySchema",
 	PROPERTY_VALUES_SUFFIX: "PropertyValues",
 } as const;
 
@@ -168,6 +169,8 @@ export const PLAYGROUND_PATHS = {
 	},
 
 	MOCK_PACKAGE_INDEX: "playground_modules/haustle-notion-orm/index.ts",
+	MOCK_PACKAGE_NOTION_ID_PATTERNS:
+		"playground_modules/haustle-notion-orm/notion-id-patterns.ts",
 	MOCK_PACKAGE_BASE: "playground_modules/haustle-notion-orm/build/src/base.ts",
 	MOCK_PACKAGE_PREFIX: "playground_modules/",
 

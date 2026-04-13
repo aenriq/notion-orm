@@ -8,7 +8,9 @@ import type {
 	ColumnTypesWithOptions,
 	SupportedNotionColumnType,
 } from "../../client/database/types";
+import type { NotionDatabaseId } from "../../client/database/types/notion-database-id";
 import { objectEntries } from "../../typeUtils";
+import { AST_TYPE_NAMES } from "./constants";
 
 export { toPascalCase } from "../../helpers";
 
@@ -26,7 +28,7 @@ export type OptionlessColumnMetadataEntry = {
 export type RelationGeneratedColumnMetadataEntry = {
 	readonly columnName: string;
 	readonly type: "relation";
-	readonly relatedDatabaseId: string;
+	readonly relatedDatabaseId: NotionDatabaseId;
 };
 
 /**
@@ -74,7 +76,9 @@ function extraMetadataPropertyAssignmentsForGeneratedColumn(
 			return [
 				ts.factory.createPropertyAssignment(
 					ts.factory.createIdentifier("relatedDatabaseId"),
-					ts.factory.createStringLiteral(value.relatedDatabaseId),
+					ts.factory.createStringLiteral(
+						String(value.relatedDatabaseId),
+					),
 				),
 			];
 		default:
@@ -367,27 +371,44 @@ export function createColumnNameToColumnProperties(
 		);
 }
 
-/**
- * Create QuerySchemaType export
- */
-export function createQueryTypeExport() {
-  return ts.factory.createTypeAliasDeclaration(
-    [ts.factory.createToken(ts.SyntaxKind.ExportKeyword)],
-    ts.factory.createIdentifier("QuerySchemaType"),
-    undefined,
-    ts.factory.createTypeReferenceNode(ts.factory.createIdentifier("Query"), [
-      createDatabaseDefinitionOfColumnsTypeReference(),
-    ])
-  );
-}
-
-export function createSchemaTypeExport() {
+/** `export type QuerySchema = Query<DatabaseDefinition<typeof columns>>` (name from `AST_TYPE_NAMES.QUERY_SCHEMA`). */
+export function createQuerySchemaTypeExport() {
 	return ts.factory.createTypeAliasDeclaration(
 		[ts.factory.createToken(ts.SyntaxKind.ExportKeyword)],
-		ts.factory.createIdentifier("DatabaseSchemaType"),
+		ts.factory.createIdentifier(AST_TYPE_NAMES.QUERY_SCHEMA),
+		undefined,
+		ts.factory.createTypeReferenceNode(ts.factory.createIdentifier("Query"), [
+			createDatabaseDefinitionOfColumnsTypeReference(),
+		]),
+	);
+}
+
+/** `export type PageSchema = InferDatabaseSchema<typeof columns>` (name from `AST_TYPE_NAMES.PAGE_SCHEMA`). */
+export function createPageSchemaTypeExport() {
+	return ts.factory.createTypeAliasDeclaration(
+		[ts.factory.createToken(ts.SyntaxKind.ExportKeyword)],
+		ts.factory.createIdentifier(AST_TYPE_NAMES.PAGE_SCHEMA),
 		undefined,
 		ts.factory.createTypeReferenceNode(
 			ts.factory.createIdentifier("InferDatabaseSchema"),
+			[
+				ts.factory.createTypeQueryNode(
+					ts.factory.createIdentifier("columns"),
+					undefined,
+				),
+			],
+		),
+	);
+}
+
+/** `export type CreateSchema = InferCreateSchema<typeof columns>` (name from `AST_TYPE_NAMES.CREATE_SCHEMA`). */
+export function createCreateSchemaTypeExport() {
+	return ts.factory.createTypeAliasDeclaration(
+		[ts.factory.createToken(ts.SyntaxKind.ExportKeyword)],
+		ts.factory.createIdentifier(AST_TYPE_NAMES.CREATE_SCHEMA),
+		undefined,
+		ts.factory.createTypeReferenceNode(
+			ts.factory.createIdentifier("InferCreateSchema"),
 			[
 				ts.factory.createTypeQueryNode(
 					ts.factory.createIdentifier("columns"),

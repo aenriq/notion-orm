@@ -16,12 +16,14 @@ import {
 	type SupportedNotionColumnType,
 } from "../../client/database/types";
 import { camelize, toUndashedNotionId } from "../../helpers";
+import { toNotionDatabaseId } from "../../client/database/types/notion-database-id";
 import {
 	createColumnNameToColumnProperties,
 	createDatabaseClassExport,
+	createCreateSchemaTypeExport,
+	createPageSchemaTypeExport,
 	createNameImport,
-	createQueryTypeExport,
-	createSchemaTypeExport,
+	createQuerySchemaTypeExport,
 	createTypeOnlyNamedImports,
 	type GeneratedColumnMetadataMap,
 	toPascalCase,
@@ -208,7 +210,9 @@ export function buildDatabaseModuleNodes(
 				columns[camelizedColumnName] = {
 					columnName: propertyName,
 					type: "relation",
-					relatedDatabaseId: toUndashedNotionId(value.relation.database_id),
+					relatedDatabaseId: toNotionDatabaseId(
+						value.relation.database_id,
+					),
 				};
 			} else {
 				if (propertyType === "relation") {
@@ -227,6 +231,7 @@ export function buildDatabaseModuleNodes(
 			names: [
 				"DatabaseColumns",
 				"DatabaseDefinition",
+				"InferCreateSchema",
 				"InferDatabaseSchema",
 				"Query",
 			],
@@ -257,13 +262,19 @@ export function buildDatabaseModuleNodes(
 			"Column metadata",
 		);
 
-		const databaseSchemaTypeAlias = createSchemaTypeExport();
+		const pageSchemaTypeAlias = createPageSchemaTypeExport();
 		addLeadingSectionComment(
-			databaseSchemaTypeAlias,
+			pageSchemaTypeAlias,
 			"Row types (TypeScript)",
 		);
 
-		const queryTypeExportStatement = createQueryTypeExport();
+		const createSchemaTypeAlias = createCreateSchemaTypeExport();
+		addLeadingSectionComment(
+			createSchemaTypeAlias,
+			"Create/update payload types (writable columns only)",
+		);
+
+		const queryTypeExportStatement = createQuerySchemaTypeExport();
 		addLeadingSectionComment(
 			queryTypeExportStatement,
 			"Typed database query arguments",
@@ -284,7 +295,8 @@ export function buildDatabaseModuleNodes(
 			...enumConstStatements.map((stmt) => [stmt]),
 			[columnNameToColumnPropertiesStatement],
 			[
-				databaseSchemaTypeAlias,
+				pageSchemaTypeAlias,
+				createSchemaTypeAlias,
 				queryTypeExportStatement,
 				databaseFactoryStatement,
 			],

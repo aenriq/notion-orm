@@ -25,7 +25,7 @@ import { TS_EMIT_INTEROP, TS_EMIT_OPTIONS_DEFAULT } from "./ts-emit-options";
  * (for example: `coffeeShopDirectory`, `foodManager`).
  * It is used as:
  * - the registry property key; import paths use PascalCase file stems (`./databases/<PascalName>`, `./agents/<PascalName>`)
- * - database factory exports are PascalCase (`CustomerOrders`); agent factory exports stay camelCase (`foodManager`)
+ * - database and agent factory exports are PascalCase (`CustomerOrders`, `FoodManager`)
  */
 export interface OrmEntityMetadata {
 	name: string;
@@ -300,7 +300,7 @@ function createRuntimeClassDeclaration(args: {
 						ts.factory.createIdentifier("agents"),
 					),
 					ts.factory.createToken(ts.SyntaxKind.EqualsToken),
-					createRegistryInitializer(agents),
+					createRegistryInitializer(agents, toPascalCase),
 				),
 			),
 		);
@@ -344,7 +344,7 @@ function createRuntimeClassDeclaration(args: {
 			[ts.factory.createModifier(ts.SyntaxKind.PublicKeyword)],
 			ts.factory.createIdentifier("agents"),
 			undefined,
-			createRegistryTypeLiteral(agents),
+			createRegistryTypeLiteral(agents, toPascalCase),
 			undefined,
 		);
 		addSyntheticJsdocBlock(agentsProperty, [
@@ -430,7 +430,7 @@ function createDeclarationClass(args: {
 			[ts.factory.createModifier(ts.SyntaxKind.PublicKeyword)],
 			ts.factory.createIdentifier("agents"),
 			undefined,
-			createRegistryTypeLiteral(agents),
+			createRegistryTypeLiteral(agents, toPascalCase),
 			undefined,
 		);
 		addSyntheticJsdocBlock(agentsProperty, [
@@ -501,6 +501,7 @@ export function buildOrmIndexModuleStatementSegments(args: {
 		? createEntityImportStatements({
 				entities: agents,
 				pathFactory: importPaths?.agentClass ?? AST_IMPORT_PATHS.agentClass,
+				factoryExportId: toPascalCase,
 			})
 		: [];
 	const baseImport = createBaseImportDeclaration({ includeAgentClient: hasAgents });
@@ -588,6 +589,7 @@ export function buildOrmIndexDeclarationStatementSegments(args: {
 				entities: agents,
 				pathFactory: AST_IMPORT_PATHS.agentClass,
 				typeOnly: true,
+				factoryExportId: toPascalCase,
 			})
 		: [];
 	const baseImport = createBaseImportDeclaration({ includeAgentClient: hasAgents });

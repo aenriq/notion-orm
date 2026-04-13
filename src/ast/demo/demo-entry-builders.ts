@@ -64,7 +64,7 @@ export function buildDemoDatabaseEntry(args: {
 
 	const namedImports = [
 		...enumImports.map((name) => `\t${name},`),
-		`\ttype DatabaseSchemaType,`,
+		`\ttype CreateSchema,`,
 	].join("\n");
 
 	const schemaEntries = Object.entries(scenario.create.schemaLiteral)
@@ -106,7 +106,7 @@ ${namedImports}
 const notion = new NotionORM({ auth: "${PLAYGROUND_PATHS.DEMO_AUTH_PLACEHOLDER}" });
 
 // create — row + icon
-const track: DatabaseSchemaType = {
+const track: CreateSchema = {
 ${schemaEntries}
 };
 const created = await notion.databases.${moduleName}.create({

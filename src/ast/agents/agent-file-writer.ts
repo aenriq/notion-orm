@@ -125,7 +125,7 @@ export function buildAgentModuleNodes(args: {
 		ts.factory.createVariableDeclarationList(
 			[
 				ts.factory.createVariableDeclaration(
-					ts.factory.createIdentifier(agentModuleName),
+					ts.factory.createIdentifier(toPascalCase(agentModuleName)),
 					undefined,
 					undefined,
 					ts.factory.createArrowFunction(

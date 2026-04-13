@@ -104,7 +104,7 @@ describe("orm index emitter", () => {
 		);
 		writeFileSync(
 			join(agentsDirectory, CODEGEN_EMIT_PATHS.mealAgentModuleJs),
-			'export const mealAgent = (auth) => ({ kind: "agent", auth });\n',
+			'export const MealAgent = (auth) => ({ kind: "agent", auth });\n',
 		);
 
 		const buildIndexTsPath = join(tempDirectory, CODEGEN_EMIT_PATHS.indexTs);

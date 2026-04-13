@@ -5,7 +5,7 @@
 import type { TaskDb } from "./databases/TaskDb";
 
 // Agent client factories (generated under ./agents/).
-import type { mealAgent } from "./agents/MealAgent";
+import type { MealAgent } from "./agents/MealAgent";
 
 // Package imports: NotionORMBase, config types, and client classes.
 import { NotionORMBase, AgentClient, DatabaseClient } from "@haustle/notion-orm/build/src/base";
@@ -29,7 +29,7 @@ export class NotionORM extends NotionORMBase {
      * Keys match the `agents` entries in your Notion config; each value is a factory bound to this client's `auth` token.
      */
     public agents: {
-        mealAgent: ReturnType<typeof mealAgent>;
+        mealAgent: ReturnType<typeof MealAgent>;
     };
     constructor(config: {
         auth?: string;

@@ -9,6 +9,7 @@ import type {
 import { renderConfigTemplateModule } from "../../src/ast/shared/emit/config-emitter";
 import type { OrmEntityMetadata } from "../../src/ast/shared/emit/orm-index-emitter";
 import type { RegistryEntry } from "../../src/ast/shared/emit/registry-emitter";
+import { MOCK_DATA_SOURCE_ID, MOCK_DATA_SOURCE_ID_B } from "./test-mock-ids";
 
 export const REGISTRY_SCENARIO = {
 	registryName: "items",
@@ -135,15 +136,15 @@ export const CONFIG_PATCH_SCENARIOS = [
 		name: "append unique database entries",
 		isTypeScript: true,
 		initialConfig: {
-			databases: [{ value: "db-1" }],
+			databases: [{ value: MOCK_DATA_SOURCE_ID }],
 			agents: [{ value: "agent-old" }],
 		},
 		type: "databases",
-		items: [{ value: "db-2", comment: "Orders" }],
+		items: [{ value: MOCK_DATA_SOURCE_ID_B, comment: "Orders" }],
 		strategy: "appendUnique",
 		expected: {
 			modified: true,
-			databases: ["db-1", "db-2"],
+			databases: [MOCK_DATA_SOURCE_ID, MOCK_DATA_SOURCE_ID_B],
 			agents: ["agent-old"],
 		},
 	},
@@ -151,7 +152,7 @@ export const CONFIG_PATCH_SCENARIOS = [
 		name: "replace all agent entries",
 		isTypeScript: true,
 		initialConfig: {
-			databases: [{ value: "db-1" }],
+			databases: [{ value: MOCK_DATA_SOURCE_ID }],
 			agents: [{ value: "agent-old" }],
 		},
 		type: "agents",
@@ -162,7 +163,7 @@ export const CONFIG_PATCH_SCENARIOS = [
 		strategy: "replaceAll",
 		expected: {
 			modified: true,
-			databases: ["db-1"],
+			databases: [MOCK_DATA_SOURCE_ID],
 			agents: ["agent-1", "agent-2"],
 		},
 	},
