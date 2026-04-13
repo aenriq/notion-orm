@@ -184,7 +184,7 @@ export function buildDatabaseModuleNodes(
 
 			const { zodMeta, enumConstStatement } = result;
 			const optionsIdentifier =
-				"propertyValuesIdentifier" in zodMeta
+				zodMeta.type === "optionLiterals"
 					? zodMeta.propertyValuesIdentifier
 					: undefined;
 
