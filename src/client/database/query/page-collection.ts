@@ -1,83 +1,158 @@
 import type { Client } from "@notionhq/client";
-import type { camelPropertyNameToNameAndTypeMapType } from "../types";
+import type { QueryDataSourceResponse } from "@notionhq/client/build/src/api-endpoints";
 import type {
-	DatabasePropertyValue,
+	DatabaseColumns,
+	DatabaseDefinition,
+	DatabaseSchema,
 	QueryFilter,
-	SupportedNotionColumnType,
+	QuerySort,
 } from "../types";
-import { buildQueryResponse } from "./build-query-response";
 import { buildDataSourceQueryParams } from "./build-query-params";
+import { isPageWithProperties, normalizePageResult } from "./normalize-page-result";
 
-export async function collectPageIdsMatchingFilter<
-	DatabaseSchemaType extends Record<string, DatabasePropertyValue>,
-	ColumnNameToColumnType extends Record<
-		keyof DatabaseSchemaType,
-		SupportedNotionColumnType
-	>,
+type MatchingQueryRow<Definition extends DatabaseDefinition> = {
+	id: string;
+	data: Partial<DatabaseSchema<Definition>>;
+};
+
+type MatchingQueryRowsPage<Definition extends DatabaseDefinition> = {
+	rows: MatchingQueryRow<Definition>[];
+	hasMore: boolean;
+	nextCursor: string | undefined;
+};
+
+function normalizeMatchingQueryRowsWithNotionPageIds<
+	Definition extends DatabaseDefinition,
+>(args: {
+	results: QueryDataSourceResponse["results"];
+	columns: DatabaseColumns;
+	validateSchema: (
+		result: Partial<DatabaseSchema<Definition>>,
+	) => void;
+}): MatchingQueryRow<Definition>[] {
+	const rows: MatchingQueryRow<Definition>[] = [];
+	for (const result of args.results) {
+		if (!isPageWithProperties(result)) {
+			continue;
+		}
+		const normalizedResult = normalizePageResult<DatabaseSchema<Definition>>({
+			result,
+			columns: args.columns,
+		});
+		if (rows.length === 0) {
+			args.validateSchema(normalizedResult);
+		}
+		rows.push({ id: result.id, data: normalizedResult });
+	}
+	return rows;
+}
+
+export async function findRowWithPageId<
+	Definition extends DatabaseDefinition,
 >(args: {
 	client: Client;
 	dataSourceId: string;
-	camelPropertyNameToNameAndTypeMap: camelPropertyNameToNameAndTypeMapType;
-	where: QueryFilter<DatabaseSchemaType, ColumnNameToColumnType>;
+	columns: DatabaseColumns;
+	where?: QueryFilter<Definition>;
+	sortBy?: QuerySort<Definition>;
+	size: number;
+	after?: string;
+	validateSchema: (
+		result: Partial<DatabaseSchema<Definition>>,
+	) => void;
+}): Promise<MatchingQueryRowsPage<Definition>> {
+	const params = buildDataSourceQueryParams({
+		dataSourceId: args.dataSourceId,
+		columns: args.columns,
+		where: args.where,
+		sortBy: args.sortBy,
+		size: args.size,
+		after: args.after,
+	});
+	const response = await args.client.dataSources.query(params);
+	return {
+		rows: normalizeMatchingQueryRowsWithNotionPageIds({
+			results: response.results,
+			columns: args.columns,
+			validateSchema: args.validateSchema,
+		}),
+		hasMore: response.has_more,
+		nextCursor: response.next_cursor ?? undefined,
+	};
+}
+
+export async function collectPageIdsMatchingFilter<
+	Definition extends DatabaseDefinition,
+>(args: {
+	client: Client;
+	dataSourceId: string;
+	columns: DatabaseColumns;
+	where?: QueryFilter<Definition>;
+	validateSchema: (
+		result: Partial<DatabaseSchema<Definition>>,
+	) => void;
 }): Promise<string[]> {
 	const ids: string[] = [];
 	let cursor: string | undefined;
 	let hasMore = true;
+	let hasValidatedFirstRow = false;
 	while (hasMore) {
-		const params = buildDataSourceQueryParams({
+		const response: MatchingQueryRowsPage<Definition> =
+			await findRowWithPageId<Definition>({
+			client: args.client,
 			dataSourceId: args.dataSourceId,
-			camelPropertyNameToNameAndTypeMap: args.camelPropertyNameToNameAndTypeMap,
+			columns: args.columns,
 			where: args.where,
 			size: 100,
 			after: cursor,
+			validateSchema: hasValidatedFirstRow
+				? () => {}
+				: args.validateSchema,
 		});
-		const response = await args.client.dataSources.query(params);
-		for (const result of response.results) {
-			if (result.object === "page" && "id" in result) {
-				ids.push(result.id);
-			}
+		for (const row of response.rows) {
+			ids.push(row.id);
 		}
-		hasMore = response.has_more;
-		cursor = response.next_cursor ?? undefined;
+		hasValidatedFirstRow ||= response.rows.length > 0;
+		hasMore = response.hasMore;
+		cursor = response.nextCursor;
 	}
 	return ids;
 }
 
 export async function findFirstQueryRowWithNotionPageId<
-	DatabaseSchemaType extends Record<string, DatabasePropertyValue>,
-	ColumnNameToColumnType extends Record<
-		keyof DatabaseSchemaType,
-		SupportedNotionColumnType
-	>,
+	Definition extends DatabaseDefinition,
 >(args: {
 	client: Client;
 	dataSourceId: string;
-	camelPropertyNameToNameAndTypeMap: camelPropertyNameToNameAndTypeMapType;
-	where: QueryFilter<DatabaseSchemaType, ColumnNameToColumnType>;
-	validateSchema: (result: Partial<DatabaseSchemaType>) => void;
-}): Promise<{ id: string; data: Partial<DatabaseSchemaType> } | null> {
-	const params = buildDataSourceQueryParams({
-		dataSourceId: args.dataSourceId,
-		camelPropertyNameToNameAndTypeMap: args.camelPropertyNameToNameAndTypeMap,
-		where: args.where,
+	columns: DatabaseColumns;
+	where?: QueryFilter<Definition>;
+	sortBy?: QuerySort<Definition>;
+	validateSchema: (
+		result: Partial<DatabaseSchema<Definition>>,
+	) => void;
+}): Promise<{ id: string; data: Partial<DatabaseSchema<Definition>> } | null> {
+	return (await findMatchingQueryRowsWithNotionPageIds({
+		...args,
 		size: 1,
-	});
-	const response = await args.client.dataSources.query(params);
-	const { results } = buildQueryResponse<DatabaseSchemaType>({
-		response,
-		columnNameToColumnProperties: args.camelPropertyNameToNameAndTypeMap,
-		validateSchema: args.validateSchema,
-	});
-	if (results.length === 0) {
-		return null;
-	}
-	const firstResult = response.results[0];
-	if (
-		!firstResult ||
-		firstResult.object !== "page" ||
-		!("id" in firstResult)
-	) {
-		return null;
-	}
-	return { id: firstResult.id, data: results[0] };
+	}))[0] ?? null;
+}
+
+export async function findMatchingQueryRowsWithNotionPageIds<
+	Definition extends DatabaseDefinition,
+>(args: {
+	client: Client;
+	dataSourceId: string;
+	columns: DatabaseColumns;
+	where?: QueryFilter<Definition>;
+	sortBy?: QuerySort<Definition>;
+	size: number;
+	validateSchema: (
+		result: Partial<DatabaseSchema<Definition>>,
+	) => void;
+}): Promise<Array<{ id: string; data: Partial<DatabaseSchema<Definition>> }>> {
+	return (
+		await findRowWithPageId({
+			...args,
+		})
+	).rows;
 }

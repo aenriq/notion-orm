@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { z } from "zod";
 import {
 	emptyQueryDataSourceResponse,
 	queryDataSourceListResponse,
 	stubQueryPageResult,
 } from "../../helpers/query-data-source-response";
+import { databasePropertyValue } from "../../helpers/query-transform-fixtures";
 
 const dataSourceQueryMock = mock(async () => emptyQueryDataSourceResponse());
 
@@ -26,15 +26,11 @@ type TestSchema = { shopName: string; rating: number };
 type TestColumnTypes = { shopName: "title"; rating: "number" };
 
 function createClient() {
-	return new DatabaseClient<TestSchema, TestColumnTypes>({
+	return new DatabaseClient({
 		id: "db-1",
 		auth: "token",
 		name: "Coffee Shops",
-		schema: z.object({
-			shopName: z.string().optional(),
-			rating: z.number().optional(),
-		}),
-		camelPropertyNameToNameAndTypeMap: {
+		columns: {
 			shopName: { columnName: "Shop Name", type: "title" },
 			rating: { columnName: "Rating", type: "number" },
 		},
@@ -50,13 +46,27 @@ describe("count", () => {
 		dataSourceQueryMock
 			.mockResolvedValueOnce(
 				queryDataSourceListResponse(
-					Array.from({ length: 100 }, () => stubQueryPageResult("p")),
+					Array.from({ length: 100 }, (_, index) => ({
+						object: "page" as const,
+						id: `p-${index}`,
+						properties: {
+							"Shop Name": databasePropertyValue.title(`Shop ${index}`),
+							Rating: databasePropertyValue.number(index),
+						},
+					})),
 					{ next_cursor: "c1", has_more: true },
 				),
 			)
 			.mockResolvedValueOnce(
 				queryDataSourceListResponse(
-					Array.from({ length: 42 }, () => stubQueryPageResult("p")),
+					Array.from({ length: 42 }, (_, index) => ({
+						object: "page" as const,
+						id: `q-${index}`,
+						properties: {
+							"Shop Name": databasePropertyValue.title(`Cafe ${index}`),
+							Rating: databasePropertyValue.number(index),
+						},
+					})),
 					{ next_cursor: null, has_more: false },
 				),
 			);
@@ -69,7 +79,16 @@ describe("count", () => {
 
 	test("counts with filter", async () => {
 		dataSourceQueryMock.mockResolvedValueOnce(
-			queryDataSourceListResponse([stubQueryPageResult("p1")]),
+			queryDataSourceListResponse([
+				{
+					object: "page",
+					id: "p1",
+					properties: {
+						"Shop Name": databasePropertyValue.title("A"),
+						Rating: databasePropertyValue.number(5),
+					},
+				},
+			]),
 		);
 
 		const client = createClient();
@@ -82,6 +101,26 @@ describe("count", () => {
 				filter: { property: "Rating", number: { greater_than: 4 } },
 			}),
 		);
+	});
+
+	test("skips partial query results so count matches normalized row semantics", async () => {
+		dataSourceQueryMock.mockResolvedValueOnce(
+			queryDataSourceListResponse([
+				stubQueryPageResult("partial"),
+				{
+					object: "page",
+					id: "full",
+					properties: {
+						"Shop Name": databasePropertyValue.title("A"),
+						Rating: databasePropertyValue.number(5),
+					},
+				},
+			]),
+		);
+
+		const client = createClient();
+		const total = await client.count();
+		expect(total).toBe(1);
 	});
 
 	test("returns zero when no results", async () => {

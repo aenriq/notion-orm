@@ -5,7 +5,7 @@ import type {
 } from "@notionhq/client/build/src/api-endpoints";
 import { camelize } from "../../../helpers";
 import { objectEntries } from "../../../typeUtils";
-import type { camelPropertyNameToNameAndTypeMapType } from "../types";
+import type { DatabaseColumns } from "../types";
 import { getSimplifiedResult } from "./response";
 import type {
 	NormalizablePageResult,
@@ -24,20 +24,30 @@ export function isFullPage(page: GetPageResponse): page is PageObjectResponse {
 	return "properties" in page;
 }
 
+/** True when a full page belongs to the current data source-backed database client. */
+export function isPageInDataSource(
+	page: PageObjectResponse,
+	dataSourceId: string,
+): boolean {
+	return (
+		page.parent.type === "data_source_id" &&
+		page.parent.data_source_id === dataSourceId
+	);
+}
+
 /** Converts a raw Notion page into the camelized shape exposed by the client. */
 export function normalizePageResult<
 	DatabaseSchemaType extends Record<string, unknown>,
 >(args: {
 	result: NormalizablePageResult;
-	camelPropertyNameToNameAndTypeMap: camelPropertyNameToNameAndTypeMapType;
+	columns: DatabaseColumns;
 }) {
 	const normalizedResult: Partial<DatabaseSchemaType> = {};
 	for (const [columnName, propertyValue] of objectEntries(
 		args.result.properties,
 	)) {
 		const camelizedColumnName = camelize(columnName);
-		const columnType =
-			args.camelPropertyNameToNameAndTypeMap[camelizedColumnName]?.type;
+		const columnType = args.columns[camelizedColumnName]?.type;
 		if (!columnType) {
 			continue;
 		}

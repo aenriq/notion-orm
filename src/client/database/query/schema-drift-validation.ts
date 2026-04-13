@@ -1,6 +1,6 @@
 import { AST_RUNTIME_CONSTANTS } from "../../../ast/shared/constants";
 import { objectKeys } from "../../../typeUtils";
-import type { PropertyNameToColumnMetadataMap } from "../types";
+import type { DatabaseColumns } from "../types";
 import type { DatabasePropertyValue } from "../types";
 
 export type SchemaValidationIssue = {
@@ -30,16 +30,16 @@ export function validateDatabaseQueryRow<
 	result: Partial<DatabaseSchemaType>;
 	schema: SafeParseSchema;
 	schemaLabel: string;
-	camelPropertyNameToNameAndTypeMap: PropertyNameToColumnMetadataMap;
+	columns: DatabaseColumns;
 	loggedSchemaValidationIssues: Set<string>;
 }): void {
-	const { result, schemaLabel, camelPropertyNameToNameAndTypeMap } = args;
+	const { result, schemaLabel, columns } = args;
 	const remoteColumnNames = new Set<string>(
 		objectKeys(result).map((k) => String(k)),
 	);
 
 	const missingProperties: string[] = [];
-	for (const propName of objectKeys(camelPropertyNameToNameAndTypeMap)) {
+	for (const propName of objectKeys(columns)) {
 		if (!remoteColumnNames.has(propName)) {
 			missingProperties.push(propName);
 		}
@@ -68,7 +68,7 @@ export function validateDatabaseQueryRow<
 	}
 
 	for (const remoteColName of remoteColumnNames) {
-		if (!camelPropertyNameToNameAndTypeMap[remoteColName]) {
+		if (!columns[remoteColName]) {
 			const issueSignature = JSON.stringify({
 				type: "unexpected_property",
 				property: remoteColName,

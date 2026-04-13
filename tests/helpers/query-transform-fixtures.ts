@@ -6,10 +6,10 @@ import type {
 	RichTextItemResponse,
 	UserObjectResponse,
 } from "@notionhq/client/build/src/api-endpoints";
-import type { PropertyNameToColumnMetadataMap } from "../../src/client/database/DatabaseClient";
 import { buildQueryResponse } from "../../src/client/database/query";
 import type { NotionPropertyValue } from "../../src/client/database/query/types";
 import type {
+	DatabaseColumns,
 	QueryResponseWithoutRawResponse,
 	QueryResponseWithRawResponse,
 	SupportedNotionColumnType,
@@ -96,27 +96,27 @@ export function runQueryScenario<
 	if (options?.includeRawResponse) {
 		return buildQueryResponse<DatabaseSchemaType>({
 			response: args.response,
-			columnNameToColumnProperties: args.columnNameToColumnProperties,
+			columns: args.columnNameToColumnProperties,
 			validateSchema,
 			options: { includeRawResponse: true },
 		});
 	}
 	return buildQueryResponse<DatabaseSchemaType>({
 		response: args.response,
-		columnNameToColumnProperties: args.columnNameToColumnProperties,
+		columns: args.columnNameToColumnProperties,
 		validateSchema,
 	});
 }
 
 export function defineDatabaseSchema<
-	Schema extends PropertyNameToColumnMetadataMap,
+	Schema extends DatabaseColumns,
 >(schema: Schema): Schema {
 	return schema;
 }
 
 export function buildColumnNameToColumnProperties<
-	Schema extends PropertyNameToColumnMetadataMap,
->(schema: Schema): PropertyNameToColumnMetadataMap {
+	Schema extends DatabaseColumns,
+>(schema: Schema): DatabaseColumns {
 	return schema;
 }
 
@@ -208,7 +208,7 @@ export function page(
 	}
 
 export function buildQueryScenario(args: {
-	schema: PropertyNameToColumnMetadataMap;
+	schema: DatabaseColumns;
 	pages: Array<Record<string, NotionPropertyValue>>;
 }) {
 	const response: QueryDataSourceResponse = {

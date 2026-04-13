@@ -4,10 +4,10 @@ import type {
 	QueryDataSourceResponse,
 } from "@notionhq/client/build/src/api-endpoints";
 import type {
+	DatabaseDefinition,
 	FilterableNotionColumnType,
 	QueryFilter,
 	QuerySort,
-	SchemaRecord,
 	SupportedNotionColumnType,
 } from "../types";
 
@@ -69,14 +69,8 @@ export type FilterValueGuardRegistry = {
 	[K in FilterableColumnType]: FilterValueGuard<K>;
 };
 
-export type QueryFilterInput<
-		DatabaseSchemaType extends SchemaRecord,
-		ColumnNameToColumnType extends Record<
-			keyof DatabaseSchemaType,
-			SupportedNotionColumnType
-		>,
-	> = QueryFilter<DatabaseSchemaType, ColumnNameToColumnType>;
+export type QueryFilterInput<Definition extends DatabaseDefinition> =
+	QueryFilter<Definition>;
 
-export type QuerySortInput<
-	ColumnNameToColumnType extends Record<string, SupportedNotionColumnType>,
-> = QuerySort<ColumnNameToColumnType>;
+export type QuerySortInput<Definition extends DatabaseDefinition> =
+	QuerySort<Definition>;

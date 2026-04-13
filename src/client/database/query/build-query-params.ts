@@ -1,25 +1,20 @@
 import type { QueryDataSourceParameters } from "@notionhq/client/build/src/api-endpoints";
-import type { camelPropertyNameToNameAndTypeMapType } from "../types";
 import type {
-	DatabasePropertyValue,
+	DatabaseColumns,
+	DatabaseDefinition,
 	QueryFilter,
 	QuerySort,
-	SupportedNotionColumnType,
 } from "../types";
 import { transformQueryFilterToApiFilter } from "./filter";
 import { transformQuerySortToApiSorts } from "./sort-transform";
 
 export function buildDataSourceQueryParams<
-	DatabaseSchemaType extends Record<string, DatabasePropertyValue>,
-	ColumnNameToColumnType extends Record<
-		keyof DatabaseSchemaType,
-		SupportedNotionColumnType
-	>,
+	Definition extends DatabaseDefinition,
 >(args: {
 	dataSourceId: string;
-	camelPropertyNameToNameAndTypeMap: camelPropertyNameToNameAndTypeMapType;
-	where?: QueryFilter<DatabaseSchemaType, ColumnNameToColumnType>;
-	sortBy?: QuerySort<ColumnNameToColumnType>;
+	columns: DatabaseColumns;
+	where?: QueryFilter<Definition>;
+	sortBy?: QuerySort<Definition>;
 	size?: number;
 	after?: string;
 }): QueryDataSourceParameters {
@@ -27,16 +22,10 @@ export function buildDataSourceQueryParams<
 		data_source_id: args.dataSourceId,
 	};
 	if (args.sortBy) {
-		params.sorts = transformQuerySortToApiSorts(
-			args.sortBy,
-			args.camelPropertyNameToNameAndTypeMap,
-		);
+		params.sorts = transformQuerySortToApiSorts(args.sortBy, args.columns);
 	}
 	if (args.where) {
-		const filters = transformQueryFilterToApiFilter(
-			args.where,
-			args.camelPropertyNameToNameAndTypeMap,
-		);
+		const filters = transformQueryFilterToApiFilter(args.where, args.columns);
 		if (filters) {
 			params.filter = filters;
 		}

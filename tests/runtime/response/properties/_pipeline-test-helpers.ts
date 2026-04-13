@@ -60,7 +60,7 @@ function transformPrimaryValue(args: {
 	if (args.includeRawResponse) {
 		const output = buildQueryResponse<Record<string, unknown>>({
 			response: rawResponse,
-			columnNameToColumnProperties: {
+			columns: {
 				[PRIMARY_CAMEL_COLUMN_NAME]: {
 					columnName: PRIMARY_COLUMN_NAME,
 					type: args.propertyType,
@@ -74,7 +74,7 @@ function transformPrimaryValue(args: {
 
 	const output = buildQueryResponse<Record<string, unknown>>({
 		response: rawResponse,
-		columnNameToColumnProperties: {
+		columns: {
 			[PRIMARY_CAMEL_COLUMN_NAME]: {
 				columnName: PRIMARY_COLUMN_NAME,
 				type: args.propertyType,

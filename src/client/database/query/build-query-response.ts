@@ -1,5 +1,5 @@
 import type { QueryDataSourceResponse } from "@notionhq/client/build/src/api-endpoints";
-import type { camelPropertyNameToNameAndTypeMapType } from "../types";
+import type { DatabaseColumns } from "../types";
 import type {
 	QueryResponseWithoutRawResponse,
 	QueryResponseWithRawResponse,
@@ -17,7 +17,7 @@ function mapQueryResults<
 	DatabaseSchemaType extends Record<string, unknown>,
 >(args: {
 	results: QueryDataSourceResponse["results"];
-	camelPropertyNameToNameAndTypeMap: camelPropertyNameToNameAndTypeMapType;
+	columns: DatabaseColumns;
 	validateSchema: (result: Partial<DatabaseSchemaType>) => void;
 }) {
 	const normalizedResults: Array<Partial<DatabaseSchemaType>> = [];
@@ -30,7 +30,7 @@ function mapQueryResults<
 
 		const normalizedResult = normalizePageResult<DatabaseSchemaType>({
 			result,
-			camelPropertyNameToNameAndTypeMap: args.camelPropertyNameToNameAndTypeMap,
+			columns: args.columns,
 		});
 
 		if (!hasValidatedFirstPage) {
@@ -48,7 +48,7 @@ type BuildQueryResponseBase<
 	DatabaseSchemaType extends Record<string, unknown>,
 > = {
 	response: QueryDataSourceResponse;
-	columnNameToColumnProperties: camelPropertyNameToNameAndTypeMapType;
+	columns: DatabaseColumns;
 	validateSchema: (result: Partial<DatabaseSchemaType>) => void;
 };
 
@@ -85,7 +85,7 @@ export function buildQueryResponse<
 	| QueryResponseWithRawResponse<DatabaseSchemaType> {
 	const results = mapQueryResults<DatabaseSchemaType>({
 		results: args.response.results,
-		camelPropertyNameToNameAndTypeMap: args.columnNameToColumnProperties,
+		columns: args.columns,
 		validateSchema: args.validateSchema,
 	});
 

@@ -1,10 +1,9 @@
 import { objectEntries } from "../../../../typeUtils";
-import type { camelPropertyNameToNameAndTypeMapType } from "../../types";
 import type {
 	apiFilterType,
+	DatabaseColumns,
+	DatabaseDefinition,
 	QueryFilter,
-	SchemaRecord,
-	SupportedNotionColumnType,
 } from "../../types";
 import { isFilterablePropertyType } from "../../types";
 import type { FilterableColumnType } from "../types";
@@ -54,10 +53,10 @@ function buildTypedLeafFilter<K extends FilterableColumnType>(
 
 function buildLeafFilterFromEntry(
 	entry: [string, unknown],
-	camelPropertyNameToNameAndTypeMap: camelPropertyNameToNameAndTypeMapType,
+	columns: DatabaseColumns,
 ): apiFilterType {
 	const [prop, columnFilterValue] = entry;
-	const mappedColumn = camelPropertyNameToNameAndTypeMap[prop];
+	const mappedColumn = columns[prop];
 	if (!mappedColumn) {
 		return undefined;
 	}
@@ -82,7 +81,7 @@ function buildLeafFilterFromEntry(
 
 function buildLeafFilterObject(
 	queryFilter: Record<string, unknown>,
-	camelPropertyNameToNameAndTypeMap: camelPropertyNameToNameAndTypeMapType,
+	columns: DatabaseColumns,
 ): apiFilterType {
 	const entries = objectEntries(queryFilter);
 	if (entries.length === 0) {
@@ -90,9 +89,7 @@ function buildLeafFilterObject(
 	}
 
 	const leafFilters = entries
-		.map((entry) =>
-			buildLeafFilterFromEntry(entry, camelPropertyNameToNameAndTypeMap),
-		)
+		.map((entry) => buildLeafFilterFromEntry(entry, columns))
 		.filter(isDefined);
 
 	if (leafFilters.length === 0) {
@@ -111,21 +108,13 @@ function buildLeafFilterObject(
 }
 
 export function transformQueryFilterToApiFilter<
-		DatabaseSchemaType extends SchemaRecord,
-		ColumnNameToColumnType extends Record<
-			keyof DatabaseSchemaType,
-			SupportedNotionColumnType
-		>,
-	>(
-		queryFilter: QueryFilter<DatabaseSchemaType, ColumnNameToColumnType>,
-		camelPropertyNameToNameAndTypeMap: camelPropertyNameToNameAndTypeMapType,
-	): apiFilterType {
+	Definition extends DatabaseDefinition,
+>(queryFilter: QueryFilter<Definition>,
+	columns: DatabaseColumns,
+): apiFilterType {
 		if ("and" in queryFilter && Array.isArray(queryFilter.and)) {
 			const andFilter = buildCompoundFilter("and", queryFilter.and, (filter) =>
-				transformQueryFilterToApiFilter(
-					filter,
-					camelPropertyNameToNameAndTypeMap,
-				),
+				transformQueryFilterToApiFilter(filter, columns),
 			);
 			if (isApiFilter(andFilter)) {
 				return andFilter;
@@ -135,10 +124,7 @@ export function transformQueryFilterToApiFilter<
 
 		if ("or" in queryFilter && Array.isArray(queryFilter.or)) {
 			const orFilter = buildCompoundFilter("or", queryFilter.or, (filter) =>
-				transformQueryFilterToApiFilter(
-					filter,
-					camelPropertyNameToNameAndTypeMap,
-				),
+				transformQueryFilterToApiFilter(filter, columns),
 			);
 			if (isApiFilter(orFilter)) {
 				return orFilter;
@@ -146,8 +132,5 @@ export function transformQueryFilterToApiFilter<
 			return undefined;
 		}
 
-		return buildLeafFilterObject(
-			queryFilter,
-			camelPropertyNameToNameAndTypeMap,
-		);
+		return buildLeafFilterObject(queryFilter, columns);
 	}

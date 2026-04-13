@@ -1,18 +1,21 @@
 import type { DatabaseClient } from "../../src/client/database/DatabaseClient";
-import type { PaginateResult } from "../../src/client/database/types";
+import type {
+	DatabaseColumns,
+	DatabaseDefinition,
+	InferDatabaseSchema,
+	PaginateResult,
+} from "../../src/client/database/types";
 import type { Equal, Expect } from "./helpers/assert";
 
-type Schema = {
-	shopName: string;
-	rating: number;
-};
+const columns = {
+	shopName: { columnName: "Shop Name", type: "title" },
+	rating: { columnName: "Rating", type: "number" },
+} as const satisfies DatabaseColumns;
 
-type ColumnTypes = {
-	shopName: "title";
-	rating: "number";
-};
+type DatabaseDefinitionType = DatabaseDefinition<typeof columns>;
+type Schema = InferDatabaseSchema<typeof columns>;
 
-declare const client: DatabaseClient<Schema, ColumnTypes>;
+declare const client: DatabaseClient<DatabaseDefinitionType>;
 
 const allRowsPromise = client.findMany();
 const selectedRowsPromise = client.findMany({

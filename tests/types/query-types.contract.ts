@@ -1,7 +1,10 @@
 import type {
+	DatabaseColumns,
+	DatabaseDefinition,
 	FindFirst,
 	FindMany,
 	FindUnique,
+	InferDatabaseSchema,
 	Projection,
 	Query,
 	ResultProjection,
@@ -9,21 +12,27 @@ import type {
 } from "../../src/client/database/types";
 import type { Equal, Expect } from "./helpers/assert";
 
-type BookSchema = {
-	shopName: string;
-	rating: number;
-	hasWifi: boolean;
-	neighborhood: "Downtown" | "Midtown";
-	tags: string[];
-};
+const NeighborhoodOptions = ["Downtown", "Midtown"] as const;
+const TagOptions = ["quiet", "outdoor", "study"] as const;
 
-type BookColumnTypes = {
-	shopName: "title";
-	rating: "number";
-	hasWifi: "checkbox";
-	neighborhood: "select";
-	tags: "multi_select";
-};
+const bookColumns = {
+	shopName: { columnName: "Shop Name", type: "title" },
+	rating: { columnName: "Rating", type: "number" },
+	hasWifi: { columnName: "Has Wifi", type: "checkbox" },
+	neighborhood: {
+		columnName: "Neighborhood",
+		type: "select",
+		options: NeighborhoodOptions,
+	},
+	tags: {
+		columnName: "Tags",
+		type: "multi_select",
+		options: TagOptions,
+	},
+} as const satisfies DatabaseColumns;
+
+type BookDefinition = DatabaseDefinition<typeof bookColumns>;
+type BookSchema = InferDatabaseSchema<typeof bookColumns>;
 
 /** When `Projection` is inferred as the full projection union, row keys must stay the full schema (not `never`). */
 type _resultProjectionInferredUnion = Expect<
@@ -34,14 +43,14 @@ type _resultProjectionInferredUnion = Expect<
 >;
 
 /** Notion `filter` / `sort` payload shape for the query transformer — not `findMany` args (`where` / `sortBy`). */
-type ApiQueryFilterSortShape = Query<BookSchema, BookColumnTypes>;
+type ApiQueryFilterSortShape = Query<BookDefinition>;
 type _queryShapeExists = Expect<
 	ApiQueryFilterSortShape extends object ? true : false
 >;
-type FindManyShape = FindMany<BookSchema, BookColumnTypes>;
-type FindFirstShape = FindFirst<BookSchema, BookColumnTypes>;
+type FindManyShape = FindMany<BookDefinition>;
+type FindFirstShape = FindFirst<BookDefinition>;
 type FindUniqueShape = FindUnique<BookSchema>;
-type UpdateManyShape = UpdateMany<BookSchema, BookColumnTypes>;
+type UpdateManyShape = UpdateMany<BookDefinition>;
 
 const validQuery: ApiQueryFilterSortShape = {
 	filter: {

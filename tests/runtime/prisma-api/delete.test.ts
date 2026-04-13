@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { z } from "zod";
 import {
 	emptyQueryDataSourceResponse,
 	queryDataSourceListResponse,
@@ -7,6 +6,18 @@ import {
 import { databasePropertyValue } from "../../helpers/query-transform-fixtures";
 
 const pagesUpdateMock = mock(async () => ({ id: "archived" }));
+const pagesRetrieveMock = mock(async () => ({
+	object: "page" as const,
+	id: "page-1",
+	parent: {
+		type: "data_source_id" as const,
+		data_source_id: "db-1",
+	},
+	properties: {
+		"Shop Name": databasePropertyValue.title("A"),
+		Rating: databasePropertyValue.number(1),
+	},
+}));
 const dataSourceQueryMock = mock(async () => emptyQueryDataSourceResponse());
 
 mock.module("@notionhq/client", () => ({
@@ -14,7 +25,7 @@ mock.module("@notionhq/client", () => ({
 		public pages = {
 			create: mock(async () => ({})),
 			update: pagesUpdateMock,
-			retrieve: mock(async () => ({})),
+			retrieve: pagesRetrieveMock,
 		};
 		public dataSources = { query: dataSourceQueryMock };
 		constructor(_args: unknown) {}
@@ -27,15 +38,11 @@ type TestSchema = { shopName: string; rating: number };
 type TestColumnTypes = { shopName: "title"; rating: "number" };
 
 function createClient() {
-	return new DatabaseClient<TestSchema, TestColumnTypes>({
+	return new DatabaseClient({
 		id: "db-1",
 		auth: "token",
 		name: "Coffee Shops",
-		schema: z.object({
-			shopName: z.string().optional(),
-			rating: z.number().optional(),
-		}),
-		camelPropertyNameToNameAndTypeMap: {
+		columns: {
 			shopName: { columnName: "Shop Name", type: "title" },
 			rating: { columnName: "Rating", type: "number" },
 		},
@@ -46,6 +53,19 @@ describe("delete", () => {
 	beforeEach(() => {
 		pagesUpdateMock.mockReset();
 		pagesUpdateMock.mockResolvedValue({ id: "archived" });
+		pagesRetrieveMock.mockReset();
+		pagesRetrieveMock.mockResolvedValue({
+			object: "page",
+			id: "page-1",
+			parent: {
+				type: "data_source_id",
+				data_source_id: "db-1",
+			},
+			properties: {
+				"Shop Name": databasePropertyValue.title("A"),
+				Rating: databasePropertyValue.number(1),
+			},
+		});
 		dataSourceQueryMock.mockReset();
 	});
 
@@ -56,6 +76,7 @@ describe("delete", () => {
 			page_id: "page-1",
 			in_trash: true,
 		});
+		expect(pagesRetrieveMock).toHaveBeenCalledWith({ page_id: "page-1" });
 	});
 
 	test("throws when id is missing", async () => {
@@ -71,6 +92,26 @@ describe("delete", () => {
 		await expect(
 			client.delete({ where: { id: "page-1" } }),
 		).rejects.toThrow("Not Found");
+	});
+
+	test("throws when the page belongs to another data source", async () => {
+		pagesRetrieveMock.mockResolvedValueOnce({
+			object: "page",
+			id: "page-1",
+			parent: {
+				type: "data_source_id",
+				data_source_id: "other-db",
+			},
+			properties: {
+				"Shop Name": databasePropertyValue.title("A"),
+				Rating: databasePropertyValue.number(1),
+			},
+		});
+		const client = createClient();
+		await expect(client.delete({ where: { id: "page-1" } })).rejects.toThrow(
+			"[@haustle/notion-orm] delete(): page page-1 does not belong to database Coffee Shops.",
+		);
+		expect(pagesUpdateMock).not.toHaveBeenCalled();
 	});
 });
 

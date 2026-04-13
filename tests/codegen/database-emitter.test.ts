@@ -193,8 +193,14 @@ describe("database module emitter", () => {
 			const jsPath = join(tempDir, CODEGEN_EMIT_PATHS.customerOrdersModuleJs);
 			const mod = await import(pathToFileURL(jsPath).href);
 
-			expect(mod.schema).toBeDefined();
 			expect(typeof mod.CustomerOrders).toBe("function");
+			const client = mod.CustomerOrders("token");
+			expect(client.args).toMatchObject({
+				id: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
+				name: "Customer Orders",
+				auth: "token",
+			});
+			expect(client.args.columns).toBeDefined();
 		});
 	});
 });

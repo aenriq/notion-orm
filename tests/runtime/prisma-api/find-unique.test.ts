@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { z } from "zod";
 import { emptyQueryDataSourceResponse } from "../../helpers/query-data-source-response";
 import { databasePropertyValue } from "../../helpers/query-transform-fixtures";
 
@@ -25,15 +24,11 @@ type TestSchema = { shopName: string; rating: number };
 type TestColumnTypes = { shopName: "title"; rating: "number" };
 
 function createClient() {
-	return new DatabaseClient<TestSchema, TestColumnTypes>({
+	return new DatabaseClient({
 		id: "db-1",
 		auth: "token",
 		name: "Coffee Shops",
-		schema: z.object({
-			shopName: z.string().optional(),
-			rating: z.number().optional(),
-		}),
-		camelPropertyNameToNameAndTypeMap: {
+		columns: {
 			shopName: { columnName: "Shop Name", type: "title" },
 			rating: { columnName: "Rating", type: "number" },
 		},
@@ -49,6 +44,10 @@ describe("findUnique", () => {
 		pagesRetrieveMock.mockResolvedValueOnce({
 			object: "page",
 			id: "page-abc",
+			parent: {
+				type: "data_source_id",
+				data_source_id: "db-1",
+			},
 			properties: {
 				"Shop Name": databasePropertyValue.title("Blue Bottle"),
 				Rating: databasePropertyValue.number(5),
@@ -74,6 +73,10 @@ describe("findUnique", () => {
 		pagesRetrieveMock.mockResolvedValueOnce({
 			object: "page",
 			id: "page-abc",
+			parent: {
+				type: "data_source_id",
+				data_source_id: "db-1",
+			},
 			properties: {
 				"Shop Name": databasePropertyValue.title("Blue Bottle"),
 				Rating: databasePropertyValue.number(5),
@@ -85,6 +88,24 @@ describe("findUnique", () => {
 			select: ["shopName"] as const,
 		});
 		expect(result).toEqual({ shopName: "Blue Bottle" });
+	});
+
+	test("returns null when the page belongs to another data source", async () => {
+		pagesRetrieveMock.mockResolvedValueOnce({
+			object: "page",
+			id: "page-abc",
+			parent: {
+				type: "data_source_id",
+				data_source_id: "other-db",
+			},
+			properties: {
+				"Shop Name": databasePropertyValue.title("Blue Bottle"),
+				Rating: databasePropertyValue.number(5),
+			},
+		});
+		const client = createClient();
+		const result = await client.findUnique({ where: { id: "page-abc" } });
+		expect(result).toBeNull();
 	});
 
 	test("throws when both select and omit are provided", async () => {

@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { z } from "zod";
 import { objectKeys } from "../../../src/typeUtils";
 import {
 	emptyQueryDataSourceResponse,
@@ -30,15 +29,11 @@ type TestSchema = { shopName: string; rating: number };
 type TestColumnTypes = { shopName: "title"; rating: "number" };
 
 function createClient() {
-	return new DatabaseClient<TestSchema, TestColumnTypes>({
+	return new DatabaseClient({
 		id: "db-1",
 		auth: "token",
 		name: "Coffee Shops",
-		schema: z.object({
-			shopName: z.string().optional(),
-			rating: z.number().optional(),
-		}),
-		camelPropertyNameToNameAndTypeMap: {
+		columns: {
 			shopName: { columnName: "Shop Name", type: "title" },
 			rating: { columnName: "Rating", type: "number" },
 		},

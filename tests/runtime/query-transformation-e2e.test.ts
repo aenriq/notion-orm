@@ -28,6 +28,10 @@ type ExampleDatabaseSchema = {
 	recordId: string | null;
 };
 
+const e2eTagOptions = ["quiet", "brunch"] as const;
+const e2eVisitStatusOptions = ["Want to Go", "Favorite"] as const;
+const e2eCategoryOptions = ["Cafe", "Bakery"] as const;
+
 describe("runtime database capability", () => {
 	test("build schema + mock API results + transform normalized response", () => {
 		const schema = defineDatabaseSchema({
@@ -47,11 +51,23 @@ describe("runtime database capability", () => {
 			contactEmail: { type: "email", columnName: "Contact Email" },
 			hasWifi: { type: "checkbox", columnName: "Has WiFi" },
 			openedOn: { type: "date", columnName: "Opened On" },
-			tags: { type: "multi_select", columnName: "Tags" },
-			visitStatus: { type: "status", columnName: "Visit Status" },
+			tags: {
+				type: "multi_select",
+				columnName: "Tags",
+				options: e2eTagOptions,
+			},
+			visitStatus: {
+				type: "status",
+				columnName: "Visit Status",
+				options: e2eVisitStatusOptions,
+			},
 			rating: { type: "number", columnName: "Rating" },
 			notes: { type: "rich_text", columnName: "Notes" },
-			category: { type: "select", columnName: "Category" },
+			category: {
+				type: "select",
+				columnName: "Category",
+				options: e2eCategoryOptions,
+			},
 			recordId: { type: "unique_id", columnName: "Record Id" },
 		});
 

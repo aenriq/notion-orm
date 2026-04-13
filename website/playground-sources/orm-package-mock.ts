@@ -5,10 +5,148 @@ export type DatabasePropertyValue =
 	| string
 	| number
 	| boolean
+	| undefined
 	| null
 	| string[]
 	| { name: string; url: string }[]
 	| DateValue;
+
+export type SupportedNotionColumnType =
+	| "title"
+	| "rich_text"
+	| "email"
+	| "phone_number"
+	| "url"
+	| "number"
+	| "checkbox"
+	| "date"
+	| "select"
+	| "status"
+	| "multi_select"
+	| "files"
+	| "people"
+	| "relation"
+	| "created_by"
+	| "last_edited_by"
+	| "created_time"
+	| "last_edited_time"
+	| "unique_id";
+
+export type ColumnTypesWithOptions = Extract<
+	SupportedNotionColumnType,
+	"select" | "status" | "multi_select"
+>;
+
+export type ColumnDefinitionBase = {
+	columnName: string;
+};
+
+export type SelectColumnDefinition = ColumnDefinitionBase & {
+	type: "select";
+	options: readonly string[];
+};
+
+export type StatusColumnDefinition = ColumnDefinitionBase & {
+	type: "status";
+	options: readonly string[];
+};
+
+export type MultiSelectColumnDefinition = ColumnDefinitionBase & {
+	type: "multi_select";
+	options: readonly string[];
+};
+
+export type NotionPropertyTypeToColumnDefinitionMap = {
+	[K in Exclude<SupportedNotionColumnType, ColumnTypesWithOptions>]: ColumnDefinitionBase & {
+		type: K;
+	};
+} & {
+	select: SelectColumnDefinition;
+	status: StatusColumnDefinition;
+	multi_select: MultiSelectColumnDefinition;
+};
+
+export type PlainColumnDefinition =
+	NotionPropertyTypeToColumnDefinitionMap[Exclude<
+		SupportedNotionColumnType,
+		ColumnTypesWithOptions
+	>];
+
+/** Definition for one generated Notion column in the emitted `columns` object. */
+export type ColumnDefinition =
+	NotionPropertyTypeToColumnDefinitionMap[SupportedNotionColumnType];
+
+/** The full generated `columns` object keyed by ORM property name. */
+export type DatabaseColumns = Record<string, ColumnDefinition>;
+
+type NotionTypeToValueMap = {
+	title: string;
+	rich_text: string;
+	email: string;
+	phone_number: string;
+	url: string;
+	number: number;
+	checkbox: boolean;
+	date: { start: string; end?: string };
+	select: string;
+	status: string;
+	multi_select: string[];
+	files: { name: string; url: string }[];
+	people: string[];
+	relation: string[];
+	created_by: string;
+	last_edited_by: string;
+	created_time: string;
+	last_edited_time: string;
+	unique_id: string;
+};
+
+type InferColumnValue<Column extends ColumnDefinition> =
+	Column extends {
+		type: "multi_select";
+		options: infer Options extends readonly string[];
+	}
+		? Array<Options[number] | (string & {})>
+		: Column extends {
+					type: "select" | "status";
+					options: infer Options extends readonly string[];
+			  }
+			? Options[number] | (string & {})
+			: Column extends { type: infer Type extends SupportedNotionColumnType }
+				? NotionTypeToValueMap[Type]
+				: never;
+
+/** Derives the typed row shape directly from a generated `columns` object. */
+export type InferDatabaseSchema<Columns extends DatabaseColumns> = {
+	[Property in keyof Columns as Columns[Property]["type"] extends "title"
+		? Property
+		: never]: InferColumnValue<Columns[Property]>;
+} & {
+	[Property in keyof Columns as Columns[Property]["type"] extends "title"
+		? never
+		: Property]?: InferColumnValue<Columns[Property]>;
+};
+
+/** Bundles the row shape and property -> column-type map for one database. */
+export type DatabaseDefinition<
+	Columns extends DatabaseColumns = DatabaseColumns,
+> = {
+	/** The typed row shape exposed by the client for this database. */
+	schema: InferDatabaseSchema<Columns>;
+	/** The property -> Notion column type lookup derived from `columns`. */
+	columns: {
+		[Property in keyof Columns]: Columns[Property]["type"];
+	};
+};
+
+/** Extracts the row shape from a `DatabaseDefinition`. */
+export type DatabaseSchema<
+	Definition extends DatabaseDefinition,
+> = Definition["schema"];
+/** Extracts the property -> column-type map from a `DatabaseDefinition`. */
+export type DatabaseColumnTypes<
+	Definition extends DatabaseDefinition,
+> = Definition["columns"];
 
 type TextFilters = {
 	equals?: string;
@@ -89,49 +227,41 @@ type FilterForColumnType<
 							? SelectFilters<Extract<NonNullable<PropertyValue>, string>>
 							: TextFilters;
 
-type SingleFilter<
-	Schema extends object,
-	ColumnTypes extends Record<keyof Schema, string>,
-> = {
-	[K in keyof Schema]?: FilterForColumnType<Schema[K], ColumnTypes[K]>;
+type SingleFilter<Definition extends DatabaseDefinition> = {
+	[K in keyof DatabaseSchema<Definition>]?: FilterForColumnType<
+		DatabaseSchema<Definition>[K],
+		DatabaseColumnTypes<Definition>[K]
+	>;
 };
 
-type CompoundFilter<
-	Schema extends object,
-	ColumnTypes extends Record<keyof Schema, string>,
-> =
+type CompoundFilter<Definition extends DatabaseDefinition> =
 	| {
-			and: Array<
-				SingleFilter<Schema, ColumnTypes> | CompoundFilter<Schema, ColumnTypes>
-			>;
+			and: Array<SingleFilter<Definition> | CompoundFilter<Definition>>;
 	  }
 	| {
-			or: Array<
-				SingleFilter<Schema, ColumnTypes> | CompoundFilter<Schema, ColumnTypes>
-			>;
+			or: Array<SingleFilter<Definition> | CompoundFilter<Definition>>;
 	  };
 
-export type QueryFilter<
-	Schema extends object,
-	ColumnTypes extends Record<keyof Schema, string>,
-> = SingleFilter<Schema, ColumnTypes> | CompoundFilter<Schema, ColumnTypes>;
+export type QueryFilter<Definition extends DatabaseDefinition> =
+	| SingleFilter<Definition>
+	| CompoundFilter<Definition>;
 
 type SortDirection = "ascending" | "descending";
 type TimestampSort = {
 	timestamp: "created_time" | "last_edited_time";
 	direction: SortDirection;
 };
-type PropertySort<ColumnTypes extends Record<string, string>> = {
-	property: Extract<keyof ColumnTypes, string>;
+type PropertySort<Definition extends DatabaseDefinition> = {
+	property: Extract<keyof DatabaseColumnTypes<Definition>, string>;
 	direction: SortDirection;
 };
-type SortBy<ColumnTypes extends Record<string, string>> = Array<
-	PropertySort<ColumnTypes> | TimestampSort
+type SortBy<Definition extends DatabaseDefinition> = Array<
+	PropertySort<Definition> | TimestampSort
 >;
 
 export type ProjectionPropertyName<Schema extends object> = Extract<
 	keyof Schema,
-	string | number
+	string
 >;
 export type ProjectionPropertyList<Schema extends object> =
 	readonly ProjectionPropertyName<Schema>[];
@@ -169,25 +299,27 @@ export type ResultProjection<
 				: Partial<Schema>;
 
 export type FindMany<
-		Schema extends object,
-		ColumnTypes extends Record<keyof Schema, string>,
-		ProjectionSelection extends Projection<Schema> | undefined = undefined,
+		Definition extends DatabaseDefinition,
+		ProjectionSelection extends
+			| Projection<DatabaseSchema<Definition>>
+			| undefined = undefined,
 	> = {
-		where?: QueryFilter<Schema, ColumnTypes>;
-		sortBy?: SortBy<ColumnTypes>;
+		where?: QueryFilter<Definition>;
+		sortBy?: SortBy<Definition>;
 		size?: number;
 		stream?: number;
 		after?: string | null;
-	} & ResolvedProjection<Schema, ProjectionSelection>;
+	} & ResolvedProjection<DatabaseSchema<Definition>, ProjectionSelection>;
 
 export type FindFirst<
-		Schema extends object,
-		ColumnTypes extends Record<keyof Schema, string>,
-		ProjectionSelection extends Projection<Schema> | undefined = undefined,
+		Definition extends DatabaseDefinition,
+		ProjectionSelection extends
+			| Projection<DatabaseSchema<Definition>>
+			| undefined = undefined,
 	> = {
-		where?: QueryFilter<Schema, ColumnTypes>;
-		sortBy?: SortBy<ColumnTypes>;
-	} & ResolvedProjection<Schema, ProjectionSelection>;
+		where?: QueryFilter<Definition>;
+		sortBy?: SortBy<Definition>;
+	} & ResolvedProjection<DatabaseSchema<Definition>, ProjectionSelection>;
 
 export type FindUnique<
 		Schema extends object,
@@ -203,10 +335,9 @@ export type PaginateResult<Row extends object> = {
 };
 
 export type Count<
-		Schema extends object,
-		ColumnTypes extends Record<keyof Schema, string>,
+		Definition extends DatabaseDefinition,
 	> = {
-		where?: QueryFilter<Schema, ColumnTypes>;
+		where?: QueryFilter<Definition>;
 	};
 
 export type Create<Schema extends object> = {
@@ -228,20 +359,19 @@ export type Update<Schema extends object> = {
 };
 
 export type UpdateMany<
-		Schema extends object,
-		ColumnTypes extends Record<keyof Schema, string>,
+		Definition extends DatabaseDefinition,
 	> = {
-		where: QueryFilter<Schema, ColumnTypes>;
-		properties: Partial<Schema>;
+		where: QueryFilter<Definition>;
+		properties: Partial<DatabaseSchema<Definition>>;
 	};
 
 export type Upsert<
-		Schema extends object,
-		ColumnTypes extends Record<keyof Schema, string>,
+		Definition extends DatabaseDefinition,
 	> = {
-		where: QueryFilter<Schema, ColumnTypes>;
-		create: Schema;
-		update: Partial<Schema>;
+		where: QueryFilter<Definition>;
+		create: DatabaseSchema<Definition>;
+		update: Partial<DatabaseSchema<Definition>>;
+		sortBy?: SortBy<Definition>;
 	};
 
 export type Delete = {
@@ -249,107 +379,139 @@ export type Delete = {
 };
 
 export type DeleteMany<
-		Schema extends object,
-		ColumnTypes extends Record<keyof Schema, string>,
+		Definition extends DatabaseDefinition,
 	> = {
-		where: QueryFilter<Schema, ColumnTypes>;
+		where: QueryFilter<Definition>;
 	};
 
-export class DatabaseClient<
-		Schema extends object,
-		ColumnTypes extends Record<string, string>,
-	> {
+export type Query<Definition extends DatabaseDefinition> = {
+	filter?: QueryFilter<Definition>;
+	sort?: SortBy<Definition>;
+	includeRawResponse?: boolean;
+};
+
+export class DatabaseClient<Definition extends DatabaseDefinition> {
 		constructor(_args: {
 			id: string;
-			camelPropertyNameToNameAndTypeMap: Record<
-				string,
-				{ columnName: string; type: string }
-			>;
+			columns: DatabaseColumns;
 			auth: string;
 			name: string;
-			schema: unknown;
 		}) {}
 
 		findMany<
 			ProjectionSelection extends
-				| Projection<Schema>
+				| Projection<DatabaseSchema<Definition>>
 				| undefined = undefined,
 		>(
-			_args: FindMany<Schema, ColumnTypes, ProjectionSelection> & {
+			_args: FindMany<Definition, ProjectionSelection> & {
 				stream: number;
 			},
-		): AsyncIterable<ResultProjection<Schema, ProjectionSelection>>;
+		): AsyncIterable<
+			ResultProjection<
+				DatabaseSchema<Definition>,
+				ProjectionSelection
+			>
+		>;
 		findMany<
 			ProjectionSelection extends
-				| Projection<Schema>
+				| Projection<DatabaseSchema<Definition>>
 				| undefined = undefined,
 		>(
-			_args: FindMany<Schema, ColumnTypes, ProjectionSelection> & {
+			_args: FindMany<Definition, ProjectionSelection> & {
 				after: string | null;
 			},
-		): Promise<PaginateResult<ResultProjection<Schema, ProjectionSelection>>>;
+		): Promise<
+			PaginateResult<
+				ResultProjection<
+					DatabaseSchema<Definition>,
+					ProjectionSelection
+				>
+			>
+		>;
 		findMany<
 			ProjectionSelection extends
-				| Projection<Schema>
+				| Projection<DatabaseSchema<Definition>>
 				| undefined = undefined,
 		>(
-			_args?: FindMany<Schema, ColumnTypes, ProjectionSelection>,
-		): Promise<Array<ResultProjection<Schema, ProjectionSelection>>>;
-		findMany(): Promise<Array<ResultProjection<Schema>>> {
+			_args?: FindMany<Definition, ProjectionSelection>,
+		): Promise<
+			Array<
+				ResultProjection<
+					DatabaseSchema<Definition>,
+					ProjectionSelection
+				>
+			>
+		>;
+		findMany(): Promise<
+			Array<ResultProjection<DatabaseSchema<Definition>>>
+		> {
 			return Promise.resolve([]);
 		}
 
 		async findFirst<
 			ProjectionSelection extends
-				| Projection<Schema>
+				| Projection<DatabaseSchema<Definition>>
 				| undefined = undefined,
 		>(
-			_args?: FindFirst<Schema, ColumnTypes, ProjectionSelection>,
-		): Promise<ResultProjection<Schema, ProjectionSelection> | null> {
+			_args?: FindFirst<Definition, ProjectionSelection>,
+		): Promise<
+			ResultProjection<
+				DatabaseSchema<Definition>,
+				ProjectionSelection
+			> | null
+		> {
 			return null;
 		}
 
 		async findUnique<
 			ProjectionSelection extends
-				| Projection<Schema>
+				| Projection<DatabaseSchema<Definition>>
 				| undefined = undefined,
 		>(
-			_args: FindUnique<Schema, ProjectionSelection>,
-		): Promise<ResultProjection<Schema, ProjectionSelection> | null> {
+			_args: FindUnique<
+				DatabaseSchema<Definition>,
+				ProjectionSelection
+			>,
+		): Promise<
+			ResultProjection<
+				DatabaseSchema<Definition>,
+				ProjectionSelection
+			> | null
+		> {
 			return null;
 		}
 
-		async count(_args?: Count<Schema, ColumnTypes>): Promise<number> {
+		async count(_args?: Count<Definition>): Promise<number> {
 			return 0;
 		}
 
-		async create(_args: Create<Schema>): Promise<{ id: string }> {
+		async create(
+			_args: Create<DatabaseSchema<Definition>>,
+		): Promise<{ id: string }> {
 			return { id: "mock-page-id" };
 		}
 
 		async createMany(
-			_args: CreateMany<Schema>,
+			_args: CreateMany<DatabaseSchema<Definition>>,
 		): Promise<Array<{ id: string }>> {
 			return [];
 		}
 
-		async update(_args: Update<Schema>): Promise<void> {}
-
-		async updateMany(
-			_args: UpdateMany<Schema, ColumnTypes>,
+		async update(
+			_args: Update<DatabaseSchema<Definition>>,
 		): Promise<void> {}
 
+		async updateMany(_args: UpdateMany<Definition>): Promise<void> {}
+
 		async upsert(
-			_args: Upsert<Schema, ColumnTypes>,
+			_args: Upsert<Definition>,
 		): Promise<{ id: string } | undefined> {
 			return { id: "mock-page-id" };
 		}
 
 		async delete(_args: Delete): Promise<void> {}
 
-		async deleteMany(
-			_args: DeleteMany<Schema, ColumnTypes>,
-		): Promise<void> {}
+		async deleteMany(_args: DeleteMany<Definition>): Promise<void> {}
 	}
 
 export type AgentIcon =

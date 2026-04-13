@@ -1,18 +1,24 @@
 import { NotionORMBase } from "./base";
 
 export type {
+	DatabaseColumns,
+	DatabaseColumnTypes,
+	DatabaseDefinition,
 	DatabasePropertyType,
+	DatabaseSchema,
+	InferDatabaseSchema,
 	NotionConfigType,
 	NotionORMConfig,
 	Query,
 } from "./base";
 export {
 	AgentClient,
+	buildZodFromColumns,
 	DatabaseClient,
 	NotionORMBase,
 	resolveNotionAuth,
 } from "./base";
-export type { ObjectEntry } from "./typeUtils";
+export type { ObjectEntry, Simplify } from "./typeUtils";
 export { objectEntries, objectKeys } from "./typeUtils";
 
 class NotionORM extends NotionORMBase {

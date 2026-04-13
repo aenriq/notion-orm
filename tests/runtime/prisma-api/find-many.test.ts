@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { z } from "zod";
 import type { NotionPropertyValue } from "../../../src/client/database/query/types";
 import { objectKeys } from "../../../src/typeUtils";
 import {
@@ -47,17 +46,11 @@ type TestColumnTypes = {
 };
 
 function createClient() {
-	return new DatabaseClient<TestSchema, TestColumnTypes>({
+	return new DatabaseClient({
 		id: "db-1",
 		auth: "token",
 		name: "Coffee Shops",
-		schema: z.object({
-			shopName: z.string().optional(),
-			rating: z.number().optional(),
-			hasWifi: z.boolean().optional(),
-			notes: z.string().optional(),
-		}),
-		camelPropertyNameToNameAndTypeMap: {
+		columns: {
 			shopName: { columnName: "Shop Name", type: "title" },
 			rating: { columnName: "Rating", type: "number" },
 			hasWifi: { columnName: "Has WiFi", type: "checkbox" },

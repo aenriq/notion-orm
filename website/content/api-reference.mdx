@@ -57,7 +57,7 @@ const agent = notion.agents.yourAgentName;
 
 ### `findUnique`
 
-Retrieves a single page by its Notion page ID. Returns `null` for missing or partial pages. Supports `select` / `omit` projection with the same semantics as `findMany`.
+Retrieves a single page by its Notion page ID, scoped to the current database client's data source. Returns `null` for missing, partial, or cross-data-source pages. Supports `select` / `omit` projection with the same semantics as `findMany`.
 
 ```ts
 const page = await db.findUnique({

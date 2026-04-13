@@ -1,6 +1,6 @@
 import type { CreatePageParameters } from "@notionhq/client/build/src/api-endpoints";
 import { objectEntries } from "../../../typeUtils";
-import type { PropertyNameToColumnMetadataMap } from "../types";
+import type { DatabaseColumns } from "../types";
 import type { DatabasePropertyValue } from "../types";
 import { buildPropertyValueForAddPage } from "./property-value";
 
@@ -14,7 +14,7 @@ export function mapDatabaseSchemaToNotionPropertyMap<
 >(
 	args: {
 		data: DatabaseSchemaType | Partial<DatabaseSchemaType>;
-		camelPropertyNameToNameAndTypeMap: PropertyNameToColumnMetadataMap;
+		columns: DatabaseColumns;
 		partial: boolean;
 	},
 ): NonNullable<CreatePageParameters["properties"]> {
@@ -26,7 +26,7 @@ export function mapDatabaseSchemaToNotionPropertyMap<
 		if (args.partial && value === undefined) {
 			continue;
 		}
-		const meta = args.camelPropertyNameToNameAndTypeMap[propertyName];
+		const meta = args.columns[propertyName];
 		if (!meta) {
 			continue;
 		}

@@ -5,16 +5,16 @@
 
 import type { QueryFilter } from "./query-filter";
 import type {
-	ColumnTypeMap,
+	DatabaseDefinition,
 	DatabasePropertyValue,
+	DatabaseSchema,
 	SchemaRecord,
-	SupportedNotionColumnType,
 } from "./schema";
 import type { QuerySort } from "./sort";
 
 export type ProjectionPropertyName<Schema extends SchemaRecord> = Extract<
 	keyof Schema,
-	string | number
+	string
 >;
 
 export type ProjectionPropertyList<Schema extends SchemaRecord> =
@@ -97,25 +97,27 @@ export type ProjectedRow<
 >;
 
 export type FindMany<
-	Schema extends SchemaRecord,
-	ColumnNameToColumnType extends ColumnTypeMap<Schema>,
-	ProjectionSelection extends Projection<Schema> | undefined = undefined,
+	Definition extends DatabaseDefinition,
+	ProjectionSelection extends
+			| Projection<DatabaseSchema<Definition>>
+		| undefined = undefined,
 > = {
-	where?: QueryFilter<Schema, ColumnNameToColumnType>;
-	sortBy?: QuerySort<ColumnNameToColumnType>;
+	where?: QueryFilter<Definition>;
+	sortBy?: QuerySort<Definition>;
 	size?: number;
 	stream?: number;
 	after?: string | null;
-} & ResolvedProjection<Schema, ProjectionSelection>;
+} & ResolvedProjection<DatabaseSchema<Definition>, ProjectionSelection>;
 
 export type FindFirst<
-	Schema extends SchemaRecord,
-	ColumnNameToColumnType extends ColumnTypeMap<Schema>,
-	ProjectionSelection extends Projection<Schema> | undefined = undefined,
+	Definition extends DatabaseDefinition,
+	ProjectionSelection extends
+			| Projection<DatabaseSchema<Definition>>
+		| undefined = undefined,
 > = {
-	where?: QueryFilter<Schema, ColumnNameToColumnType>;
-	sortBy?: QuerySort<ColumnNameToColumnType>;
-} & ResolvedProjection<Schema, ProjectionSelection>;
+	where?: QueryFilter<Definition>;
+	sortBy?: QuerySort<Definition>;
+} & ResolvedProjection<DatabaseSchema<Definition>, ProjectionSelection>;
 
 export type FindUnique<
 	Schema extends SchemaRecord,
@@ -130,48 +132,33 @@ export type PaginateResult<Row extends object> = {
 	hasMore: boolean;
 };
 
-export type Count<
-	Y extends SchemaRecord,
-	T extends Record<keyof Y, SupportedNotionColumnType>,
-> = {
-	where?: QueryFilter<Y, T>;
+export type Count<Definition extends DatabaseDefinition> = {
+	where?: QueryFilter<Definition>;
 };
 
 /** Discriminated `findMany` args: streaming (async iterable). */
 export type FindManyStream<
-	DatabaseSchemaType extends Record<string, DatabasePropertyValue>,
-	ColumnNameToColumnType extends Record<
-		keyof DatabaseSchemaType,
-		SupportedNotionColumnType
-	>,
-	Proj extends Projection<DatabaseSchemaType> | undefined,
-> = FindMany<DatabaseSchemaType, ColumnNameToColumnType, Proj> & {
+	Definition extends DatabaseDefinition,
+	Proj extends Projection<DatabaseSchema<Definition>> | undefined,
+> = FindMany<Definition, Proj> & {
 	stream: number;
 	after?: never;
 };
 
 /** Discriminated `findMany` args: cursor pagination. */
 export type FindManyPaginated<
-	DatabaseSchemaType extends Record<string, DatabasePropertyValue>,
-	ColumnNameToColumnType extends Record<
-		keyof DatabaseSchemaType,
-		SupportedNotionColumnType
-	>,
-	Proj extends Projection<DatabaseSchemaType> | undefined,
-> = FindMany<DatabaseSchemaType, ColumnNameToColumnType, Proj> & {
+	Definition extends DatabaseDefinition,
+	Proj extends Projection<DatabaseSchema<Definition>> | undefined,
+> = FindMany<Definition, Proj> & {
 	after: string | null;
 	stream?: never;
 };
 
 /** Discriminated `findMany` args: load full list in one response. */
 export type FindManyList<
-	DatabaseSchemaType extends Record<string, DatabasePropertyValue>,
-	ColumnNameToColumnType extends Record<
-		keyof DatabaseSchemaType,
-		SupportedNotionColumnType
-	>,
-	Proj extends Projection<DatabaseSchemaType> | undefined,
-> = FindMany<DatabaseSchemaType, ColumnNameToColumnType, Proj> & {
+	Definition extends DatabaseDefinition,
+	Proj extends Projection<DatabaseSchema<Definition>> | undefined,
+> = FindMany<Definition, Proj> & {
 	after?: never;
 	stream?: never;
 };

@@ -1,7 +1,7 @@
 /**
  * Database file writer for generated Notion data sources.
- * Converts a Notion schema response into emitted TS/JS modules, runtime Zod
- * validation, and metadata used by the generated client layer.
+ * Converts a Notion schema response into emitted TS/JS modules and column
+ * metadata consumed by the generated client layer.
  */
 import type {
 	DataSourceObjectResponse,
@@ -11,19 +11,19 @@ import fs from "fs";
 import path from "path";
 import * as ts from "typescript";
 import {
-	type DatabasePropertyType,
+	isColumnTypesWithOptions,
 	isSupportedPropertyType,
 	type SupportedNotionColumnType,
 } from "../../client/database/types";
 import { camelize, toUndashedNotionId } from "../../helpers";
 import {
 	createColumnNameToColumnProperties,
-	createColumnNameToColumnType,
 	createDatabaseClassExport,
-	createDatabaseIdVariable,
 	createNameImport,
 	createQueryTypeExport,
+	createSchemaTypeExport,
 	createTypeOnlyNamedImports,
+	type GeneratedColumnMetadataMap,
 	toPascalCase,
 } from "../shared/ast-builders";
 import {
@@ -43,12 +43,6 @@ import {
 	propertyASTGenerators,
 	type SupportedNotionProperty,
 } from "./notion-column-generators";
-import { createZodSchema, type ZodMetadata } from "./zod-schema";
-
-type PropertyNameToColumnMetadataMap = Record<
-	string,
-	{ columnName: string; type: DatabasePropertyType }
->;
 
 type NotionDataSourceProperty = DataSourceObjectResponse["properties"][string];
 
@@ -150,10 +144,9 @@ export function buildDatabaseModuleNodes(
 		const { id: dataSourceId, properties } = dataSourceResponse;
 		const normalizedDataSourceId = toUndashedNotionId(dataSourceId);
 
-		const camelPropertyNameToNameAndTypeMap: PropertyNameToColumnMetadataMap =
+		const columns: GeneratedColumnMetadataMap =
 			{};
 		const enumConstStatements: ts.Statement[] = [];
-		const zodColumns: ZodMetadata[] = [];
 
 		const databaseName = getDataSourceDisplayName({
 			dataSourceResponse,
@@ -161,8 +154,6 @@ export function buildDatabaseModuleNodes(
 		});
 
 		const databaseModuleName = camelize(databaseName);
-
-		const databaseColumnTypeProps: ts.TypeElement[] = [];
 
 		Object.entries(properties).forEach(([propertyName, value], index) => {
 			const unsupportedPropertyType = value.type;
@@ -175,11 +166,6 @@ export function buildDatabaseModuleNodes(
 			const propertyType: SupportedNotionColumnType = value.type;
 
 			const camelizedColumnName = camelize(propertyName);
-
-			camelPropertyNameToNameAndTypeMap[camelizedColumnName] = {
-				columnName: propertyName,
-				type: propertyType,
-			};
 
 			const handler = propertyASTGenerators[propertyType];
 			if (!handler) {
@@ -196,36 +182,43 @@ export function buildDatabaseModuleNodes(
 				return;
 			}
 
-			const { tsPropertySignature, zodMeta, enumConstStatement } = result;
-
-			databaseColumnTypeProps.push(tsPropertySignature);
+			const { zodMeta, enumConstStatement } = result;
+			const optionsIdentifier =
+				"propertyValuesIdentifier" in zodMeta
+					? zodMeta.propertyValuesIdentifier
+					: undefined;
 
 			if (enumConstStatement) {
 				enumConstStatements.push(enumConstStatement);
 			}
 
-			zodColumns.push({
-				propName: camelizedColumnName,
-				columnName: propertyName,
-				type: propertyType,
-				...zodMeta,
-			});
+			if (isColumnTypesWithOptions(propertyType)) {
+				if (optionsIdentifier === undefined) {
+					console.warn(
+						`[${databaseModuleName}] Missing options identifier for '${propertyName}' (${propertyType}); skipping.`,
+					);
+					return;
+				}
+				columns[camelizedColumnName] = {
+					columnName: propertyName,
+					type: propertyType,
+					optionsIdentifier,
+				};
+			} else {
+				columns[camelizedColumnName] = {
+					columnName: propertyName,
+					type: propertyType,
+				};
+			}
 		});
-
-		const zodSchemaStatement = createZodSchema({
-			identifier: "schema",
-			columns: zodColumns,
-		});
-
-		const databaseSchemaTypeAlias = ts.factory.createTypeAliasDeclaration(
-			[ts.factory.createToken(ts.SyntaxKind.ExportKeyword)],
-			ts.factory.createIdentifier("DatabaseSchemaType"),
-			undefined,
-			ts.factory.createTypeLiteralNode(databaseColumnTypeProps),
-		);
 
 		const queryAndPropertyTypesImport = createTypeOnlyNamedImports({
-			names: ["Query", "DatabasePropertyType"],
+			names: [
+				"DatabaseColumns",
+				"DatabaseDefinition",
+				"InferDatabaseSchema",
+				"Query",
+			],
 			path: AST_IMPORT_PATHS.DATABASE_CLIENT,
 		});
 		const databaseClientImport = createNameImport({
@@ -237,17 +230,6 @@ export function buildDatabaseModuleNodes(
 			AST_RUNTIME_CONSTANTS.CLI_GENERATE_COMMAND,
 		);
 
-		const zodImport = createNameImport({
-			namedImport: "z",
-			path: AST_IMPORT_PATHS.ZOD,
-		});
-
-		const idStatement = createDatabaseIdVariable(normalizedDataSourceId);
-		addLeadingSectionComment(
-			idStatement,
-			"Identity (Notion data source id)",
-		);
-
 		if (enumConstStatements.length > 0) {
 			addLeadingSectionComment(
 				enumConstStatements[0],
@@ -255,24 +237,19 @@ export function buildDatabaseModuleNodes(
 			);
 		}
 
-		addLeadingSectionComment(
-			databaseSchemaTypeAlias,
-			"Row types (TypeScript)",
-		);
-
 		const columnNameToColumnPropertiesStatement = ts.factory.createVariableStatement(
 			undefined,
-			createColumnNameToColumnProperties(camelPropertyNameToNameAndTypeMap),
+			createColumnNameToColumnProperties(columns),
 		);
 		addLeadingSectionComment(
 			columnNameToColumnPropertiesStatement,
 			"Column metadata",
 		);
 
-		const columnNameToColumnTypeStatement = createColumnNameToColumnType();
+		const databaseSchemaTypeAlias = createSchemaTypeExport();
 		addLeadingSectionComment(
-			columnNameToColumnTypeStatement,
-			"Derived column types (for query filters/sorts)",
+			databaseSchemaTypeAlias,
+			"Row types (TypeScript)",
 		);
 
 		const queryTypeExportStatement = createQueryTypeExport();
@@ -281,11 +258,10 @@ export function buildDatabaseModuleNodes(
 			"Typed database query arguments",
 		);
 
-		addLeadingSectionComment(zodSchemaStatement, "Runtime validation (Zod)");
-
 		const databaseFactoryStatement = createDatabaseClassExport({
 			databaseName: toPascalCase(databaseModuleName),
 			schemaTitle: databaseName,
+			databaseId: normalizedDataSourceId,
 		});
 		addLeadingSectionComment(
 			databaseFactoryStatement,
@@ -293,15 +269,14 @@ export function buildDatabaseModuleNodes(
 		);
 
 		const statementSegments: ts.Statement[][] = [
-			[queryAndPropertyTypesImport, databaseClientImport, zodImport],
-			[databaseFactoryStatement],
-			[idStatement],
+			[queryAndPropertyTypesImport, databaseClientImport],
 			...enumConstStatements.map((stmt) => [stmt]),
-			[databaseSchemaTypeAlias],
 			[columnNameToColumnPropertiesStatement],
-			[columnNameToColumnTypeStatement],
-			[queryTypeExportStatement],
-			[zodSchemaStatement],
+			[
+				databaseSchemaTypeAlias,
+				queryTypeExportStatement,
+				databaseFactoryStatement,
+			],
 		];
 
 		return {

@@ -1,41 +1,35 @@
 import { describe, expect, test } from "bun:test";
-import type { camelPropertyNameToNameAndTypeMapType } from "../../../src/client/database/DatabaseClient";
+import type {
+	DatabaseColumns,
+	DatabaseDefinition,
+	InferDatabaseSchema,
+	QueryFilter,
+} from "../../../src/client/database/types";
 import { transformQueryFilterToApiFilter } from "../../../src/client/database/query/filter";
-import type { QueryFilter } from "../../../src/client/database/types";
 
-type QuerySchema = {
-	shopName: string;
-	rating: number;
-	visitStatus: string;
-	website: string;
-	contactEmail: string;
-	contactPhone: string;
-	hasWifi: boolean;
-	openedOn: { start: string; end?: string };
-	tags: string[];
-	neighborhood: string;
-	notes: string;
-	attachments: Array<{ name: string; url: string }>;
-	relatedPages: string[];
-	owners: string[];
-	createdByUser: string;
-	lastEditedByUser: string;
-	createdAt: string;
-	updatedAt: string;
-	recordId: number;
-};
+const visitStatusOptions = ["Open", "Closed"] as const;
+const tagOptions = ["quiet", "brunch", "study"] as const;
+const neighborhoodOptions = ["Downtown", "Midtown"] as const;
 
 const map = {
 	shopName: { columnName: "Shop Name", type: "title" },
 	rating: { columnName: "Rating", type: "number" },
-	visitStatus: { columnName: "Visit Status", type: "status" },
+	visitStatus: {
+		columnName: "Visit Status",
+		type: "status",
+		options: visitStatusOptions,
+	},
 	website: { columnName: "Website", type: "url" },
 	contactEmail: { columnName: "Contact Email", type: "email" },
 	contactPhone: { columnName: "Contact Phone", type: "phone_number" },
 	hasWifi: { columnName: "Has WiFi", type: "checkbox" },
 	openedOn: { columnName: "Opened On", type: "date" },
-	tags: { columnName: "Tags", type: "multi_select" },
-	neighborhood: { columnName: "Neighborhood", type: "select" },
+	tags: { columnName: "Tags", type: "multi_select", options: tagOptions },
+	neighborhood: {
+		columnName: "Neighborhood",
+		type: "select",
+		options: neighborhoodOptions,
+	},
 	notes: { columnName: "Notes", type: "rich_text" },
 	attachments: { columnName: "Attachments", type: "files" },
 	relatedPages: { columnName: "Related Pages", type: "relation" },
@@ -48,17 +42,13 @@ const map = {
 	createdAt: { columnName: "Created At", type: "created_time" },
 	updatedAt: { columnName: "Updated At", type: "last_edited_time" },
 	recordId: { columnName: "Record Id", type: "unique_id" },
-} as const satisfies camelPropertyNameToNameAndTypeMapType;
+} as const satisfies DatabaseColumns;
 
-type QueryColumns = {
-	[Property in keyof typeof map]: (typeof map)[Property]["type"];
-};
+type QueryDefinition = DatabaseDefinition<typeof map>;
+type QuerySchema = InferDatabaseSchema<typeof map>;
 
-function transformFilter(queryFilter: QueryFilter<QuerySchema, QueryColumns>) {
-	return transformQueryFilterToApiFilter<QuerySchema, QueryColumns>(
-		queryFilter,
-		map,
-	);
+function transformFilter(queryFilter: QueryFilter<QueryDefinition>) {
+	return transformQueryFilterToApiFilter<QueryDefinition>(queryFilter, map);
 }
 
 describe("query filter transform", () => {

@@ -4,8 +4,9 @@
 
 import type { FilterOptions } from "./notion-filter-model";
 import type {
-	ColumnTypeMap,
-	SchemaRecord,
+	DatabaseColumnTypes,
+	DatabaseDefinition,
+	DatabaseSchema,
 	SupportedNotionColumnType,
 } from "./schema";
 
@@ -14,46 +15,42 @@ type FilterValueForColumnType<
 	ColumnType extends SupportedNotionColumnType,
 > = Partial<FilterOptions<NonNullable<PropertyValue>>[ColumnType]>;
 
-type FilterValueForProperty<
-	Schema extends SchemaRecord,
-	ColumnNameToColumnType extends ColumnTypeMap<Schema>,
-	PropertyName extends keyof Schema,
-> = FilterValueForColumnType<
-	Schema[PropertyName],
-	ColumnNameToColumnType[PropertyName]
+type DatabaseDefinitionPropertyName<
+	Definition extends DatabaseDefinition,
+> = Extract<
+	keyof DatabaseSchema<Definition>,
+	keyof DatabaseColumnTypes<Definition>
 >;
 
-export type SingleFilter<
-	Schema extends SchemaRecord,
-	ColumnNameToColumnType extends ColumnTypeMap<Schema>,
-> = {
-	[PropertyName in keyof Schema]?: FilterValueForProperty<
-		Schema,
-		ColumnNameToColumnType,
+type FilterValueForProperty<
+	Definition extends DatabaseDefinition,
+	PropertyName extends DatabaseDefinitionPropertyName<Definition>,
+> = FilterValueForColumnType<
+	DatabaseSchema<Definition>[PropertyName],
+	DatabaseColumnTypes<Definition>[PropertyName]
+>;
+
+export type SingleFilter<Definition extends DatabaseDefinition> = {
+	[PropertyName in DatabaseDefinitionPropertyName<Definition>]?: FilterValueForProperty<
+		Definition,
 		PropertyName
 	>;
 };
 
-export type CompoundFilters<
-	Schema extends SchemaRecord,
-	ColumnNameToColumnType extends ColumnTypeMap<Schema>,
-> =
+export type CompoundFilters<Definition extends DatabaseDefinition> =
 	| {
 			and: Array<
-				| SingleFilter<Schema, ColumnNameToColumnType>
-				| CompoundFilters<Schema, ColumnNameToColumnType>
+				| SingleFilter<Definition>
+				| CompoundFilters<Definition>
 			>;
 	  }
 	| {
 			or: Array<
-				| SingleFilter<Schema, ColumnNameToColumnType>
-				| CompoundFilters<Schema, ColumnNameToColumnType>
+				| SingleFilter<Definition>
+				| CompoundFilters<Definition>
 			>;
 	  };
 
-export type QueryFilter<
-	Schema extends SchemaRecord,
-	ColumnNameToColumnType extends ColumnTypeMap<Schema>,
-> =
-	| SingleFilter<Schema, ColumnNameToColumnType>
-	| CompoundFilters<Schema, ColumnNameToColumnType>;
+export type QueryFilter<Definition extends DatabaseDefinition> =
+	| SingleFilter<Definition>
+	| CompoundFilters<Definition>;

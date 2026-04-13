@@ -4,7 +4,12 @@
 
 import type { CreatePageParameters } from "@notionhq/client/build/src/api-endpoints";
 import type { QueryFilter } from "./query-filter";
-import type { SchemaRecord, SupportedNotionColumnType } from "./schema";
+import type {
+	DatabaseDefinition,
+	DatabaseSchema,
+	SchemaRecord,
+} from "./schema";
+import type { QuerySort } from "./sort";
 
 export type Create<Y extends SchemaRecord> = {
 	properties: Y;
@@ -22,30 +27,23 @@ export type Update<Y extends SchemaRecord> = {
 	properties: Partial<Y>;
 };
 
-export type UpdateMany<
-	Y extends SchemaRecord,
-	T extends Record<keyof Y, SupportedNotionColumnType>,
-> = {
-	where: QueryFilter<Y, T>;
-	properties: Partial<Y>;
+export type UpdateMany<Definition extends DatabaseDefinition> = {
+	where: QueryFilter<Definition>;
+	properties: Partial<DatabaseSchema<Definition>>;
 };
 
-export type Upsert<
-	Y extends SchemaRecord,
-	T extends Record<keyof Y, SupportedNotionColumnType>,
-> = {
-	where: QueryFilter<Y, T>;
-	create: Y;
-	update: Partial<Y>;
+export type Upsert<Definition extends DatabaseDefinition> = {
+	where: QueryFilter<Definition>;
+	create: DatabaseSchema<Definition>;
+	update: Partial<DatabaseSchema<Definition>>;
+	/** When multiple rows match `where`, which row to update (default: oldest by `created_time`). */
+	sortBy?: QuerySort<Definition>;
 };
 
 export type Delete = {
 	where: { id: string };
 };
 
-export type DeleteMany<
-	Y extends SchemaRecord,
-	T extends Record<keyof Y, SupportedNotionColumnType>,
-> = {
-	where: QueryFilter<Y, T>;
+export type DeleteMany<Definition extends DatabaseDefinition> = {
+	where: QueryFilter<Definition>;
 };

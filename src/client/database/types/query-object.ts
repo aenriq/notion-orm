@@ -7,37 +7,29 @@ import type {
 	QueryDataSourceResponse,
 } from "@notionhq/client/build/src/api-endpoints";
 import type { QueryFilter } from "./query-filter";
-import type { SchemaRecord, SupportedNotionColumnType } from "./schema";
+import type { DatabaseDefinition } from "./schema";
 import type { QuerySort } from "./sort";
 
 type NotionApiFilter = NonNullable<QueryDataSourceParameters["filter"]>;
 
-type QueryBase<
-	Y extends SchemaRecord,
-	T extends Record<keyof Y, SupportedNotionColumnType>,
-> = {
-	filter?: QueryFilter<Y, T>;
-	sort?: QuerySort<T>;
+type QueryBase<Definition extends DatabaseDefinition> = {
+	filter?: QueryFilter<Definition>;
+	sort?: QuerySort<Definition>;
 };
 
-export type QueryWithoutRawResponse<
-	Y extends SchemaRecord,
-	T extends Record<keyof Y, SupportedNotionColumnType>,
-> = QueryBase<Y, T> & {
+export type QueryWithoutRawResponse<Definition extends DatabaseDefinition> =
+	QueryBase<Definition> & {
 	includeRawResponse?: false | undefined;
 };
 
-export type QueryWithRawResponse<
-	Y extends SchemaRecord,
-	T extends Record<keyof Y, SupportedNotionColumnType>,
-> = QueryBase<Y, T> & {
+export type QueryWithRawResponse<Definition extends DatabaseDefinition> =
+	QueryBase<Definition> & {
 	includeRawResponse: true;
 };
 
-export type Query<
-	Y extends SchemaRecord,
-	T extends Record<keyof Y, SupportedNotionColumnType>,
-> = QueryWithoutRawResponse<Y, T> | QueryWithRawResponse<Y, T>;
+export type Query<Definition extends DatabaseDefinition> =
+	| QueryWithoutRawResponse<Definition>
+	| QueryWithRawResponse<Definition>;
 
 export type apiFilterQuery = {
 	filter?: apiSingleFilter | apiAndFilter | apiOrFilter;
