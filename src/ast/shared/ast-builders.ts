@@ -15,14 +15,14 @@ export { toPascalCase } from "../../helpers";
 /**
  * Plain column: emitted metadata has no `options` array (non–select-like types).
  */
-export type PlainGeneratedColumnMetadataEntry = {
+export type OptionlessColumnMetadataEntry = {
 	readonly columnName: string;
 	readonly type: Exclude<SupportedNotionColumnType, ColumnTypesWithOptions>;
 };
 
 /**
  * Select / status / multi_select: emitted metadata includes `options` pointing at a
- * generated const; `type` discriminates this arm from {@link PlainGeneratedColumnMetadataEntry}.
+ * generated const; `type` discriminates this arm from {@link OptionlessColumnMetadataEntry}.
  */
 export type SelectLikeGeneratedColumnMetadataEntry = {
 	readonly columnName: string;
@@ -31,7 +31,7 @@ export type SelectLikeGeneratedColumnMetadataEntry = {
 };
 
 export type GeneratedColumnMetadataEntry =
-	| PlainGeneratedColumnMetadataEntry
+	| OptionlessColumnMetadataEntry
 	| SelectLikeGeneratedColumnMetadataEntry;
 
 /** Lookup map used to generate the emitted `columns` object. */
