@@ -1,0 +1,30 @@
+{
+	"$schema": "https://unpkg.com/knip@6/schema.json",
+	"ignoreBinaries": ["notion"],
+	"ignoreFiles": [
+		"tests/golden/**",
+		"tests/agents/mealAgent.d.ts",
+		"website/playground-sources/**"
+	],
+	"workspaces": {
+		".": {
+			"entry": [
+				"src/{index,cli,main}.{js,cjs,mjs,jsx,ts,cts,mts,tsx}",
+				"src/base.ts",
+				"src/cli/**/*.ts",
+				"src/ast/agents/generate-agents-cli.ts",
+				"src/client/**/index.ts",
+				"src/client/agent/AgentClient.ts",
+				"src/client/database/DatabaseClient.ts",
+				"src/client/database/types/{schema,query-object}.ts",
+				"src/client/database/query/{types,schema-drift-validation}.ts",
+				"tests/**/*.test.ts",
+				"tests/types/**/*.ts",
+				"tests/helpers/**/*.ts"
+			]
+		},
+		"website": {
+			"entry": ["scripts/build-content.ts"]
+		}
+	}
+}
