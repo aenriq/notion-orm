@@ -178,10 +178,13 @@ const codeBlockWrapperWithoutCaptionClass = css({
 
 const codeBlockRevealOnHoverClass = css({
 	position: "relative",
-	_hover: {
-		"& [data-code-copy-wrap]": {
-			opacity: 1,
-			pointerEvents: "auto",
+	/** Hover-only reveal is awkward on touch; keep copy always visible below `md`. */
+	md: {
+		_hover: {
+			"& [data-code-copy-wrap]": {
+				opacity: 1,
+				pointerEvents: "auto",
+			},
 		},
 	},
 });
@@ -239,8 +242,8 @@ const codeBlockCaptionClass = css({
 const copyButtonWrapClass = css({
 	position: "relative",
 	flexShrink: 0,
-	opacity: 0,
-	pointerEvents: "none",
+	opacity: { base: 1, md: 0 },
+	pointerEvents: { base: "auto", md: "none" },
 	transitionProperty: "opacity",
 	transitionDuration: "0.15s",
 	transitionTimingFunction: "ease",
