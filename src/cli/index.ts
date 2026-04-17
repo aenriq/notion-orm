@@ -376,6 +376,12 @@ function showHelpMessage(): void {
 		"  notion add <id-or-url> [--type database]  - Add database to config and generate types",
 	);
 	console.log(
+		"  notion edit-db <dbName>                    - Interactively edit a database schema locally",
+	);
+	console.log(
+		"  notion push <dbName>                       - Push local database schema changes to Notion",
+	);
+	console.log(
 		"  notion setup-agents-sdk                    - Install/update the Notion Agents SDK (paid feature)",
 	);
 	console.log(
@@ -438,6 +444,24 @@ async function main() {
 				process.exit(1);
 			}
 			return runAdd(input);
+		}
+		case "edit-db": {
+			const dbName = args[1];
+			if (!dbName) {
+				console.error("❌ Missing database name.");
+				process.exit(1);
+			}
+			const { runEditDb } = await import("./edit-db");
+			return runEditDb(dbName);
+		}
+		case "push": {
+			const dbName = args[1];
+			if (!dbName) {
+				console.error("❌ Missing database name.");
+				process.exit(1);
+			}
+			const { runPushDb } = await import("./push-db");
+			return runPushDb(dbName);
 		}
 		default:
 			showHelpMessage();
