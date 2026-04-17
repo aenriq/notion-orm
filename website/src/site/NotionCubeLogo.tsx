@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { css, cx } from "../styled-system/css";
 
 const VIEWPORT_W = 25;
@@ -195,12 +195,12 @@ function viewportRowsToGrid(rows: readonly string[]): string[][] {
 	);
 }
 
-export function NotionCubeLogo({
+	export function NotionCubeLogo({
 		animate = true,
 		viewportRows,
 		fixedHero = false,
 	}: NotionCubeLogoProps) {
-		const [frame, setFrame] = useState(0);
+		const preRef = useRef<HTMLPreElement>(null);
 		const [reduceMotion, setReduceMotion] = useState(false);
 
 		useEffect(() => {
@@ -216,26 +216,32 @@ export function NotionCubeLogo({
 		}, [animate]);
 
 		useEffect(() => {
-			if (reduceMotion) {
+			if (reduceMotion || !animate) {
 				return;
 			}
+			let frame = 0;
 			const id = window.setInterval(() => {
-				setFrame((n) => (n + 1) % FRAME_COUNT);
+				frame = (frame + 1) % FRAME_COUNT;
+				if (preRef.current) {
+					preRef.current.textContent = PRECOMPUTED_DISPLAY[frame] ?? PRECOMPUTED_DISPLAY[0];
+				}
 			}, 90);
 			return () => window.clearInterval(id);
-		}, [reduceMotion]);
+		}, [reduceMotion, animate]);
 
 		const staticText = viewportRows
 			? buildMonitorLines(viewportRowsToGrid(viewportRows)).join("\n")
 			: PRECOMPUTED_DISPLAY[0];
 
-		const text =
+		const initialText =
 			reduceMotion || !animate
 				? staticText
-				: (PRECOMPUTED_DISPLAY[frame] ?? PRECOMPUTED_DISPLAY[0]);
+				: PRECOMPUTED_DISPLAY[0];
 
 		const pre = (
-			<pre className={cx(preClass, fixedHero && fixedHeroPreClass)}>{text}</pre>
+			<pre ref={preRef} className={cx(preClass, fixedHero && fixedHeroPreClass)}>
+				{initialText}
+			</pre>
 		);
 
 		if (fixedHero) {
