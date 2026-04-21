@@ -202,6 +202,7 @@ function viewportRowsToGrid(rows: readonly string[]): string[][] {
 	}: NotionCubeLogoProps) {
 		const preRef = useRef<HTMLPreElement>(null);
 		const [reduceMotion, setReduceMotion] = useState(false);
+		const shouldAnimate = animate && !reduceMotion;
 
 		useEffect(() => {
 			if (!animate) {
@@ -216,7 +217,7 @@ function viewportRowsToGrid(rows: readonly string[]): string[][] {
 		}, [animate]);
 
 		useEffect(() => {
-			if (reduceMotion || !animate) {
+			if (!shouldAnimate) {
 				return;
 			}
 			let frame = 0;
@@ -227,20 +228,20 @@ function viewportRowsToGrid(rows: readonly string[]): string[][] {
 				}
 			}, 90);
 			return () => window.clearInterval(id);
-		}, [reduceMotion, animate]);
+		}, [shouldAnimate]);
 
 		const staticText = viewportRows
 			? buildMonitorLines(viewportRowsToGrid(viewportRows)).join("\n")
 			: PRECOMPUTED_DISPLAY[0];
 
-		const initialText =
-			reduceMotion || !animate
+		const text =
+			!shouldAnimate
 				? staticText
 				: PRECOMPUTED_DISPLAY[0];
 
 		const pre = (
 			<pre ref={preRef} className={cx(preClass, fixedHero && fixedHeroPreClass)}>
-				{initialText}
+				{text}
 			</pre>
 		);
 
